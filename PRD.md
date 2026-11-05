@@ -305,9 +305,10 @@ Text/background pairs used for body text must pass WCAG AA (4.5:1); a unit test 
 - [x] **T1.10** Protocol message enums (5.2) + `npm run gen:types` (ts-rs export). *Acceptance:* generated `.ts` files compile in app and extension.
 
 ### Phase 2 — Windows platform layer (`crates/platform`)
-- [ ] **T2.1** Hosts file: write a managed block between `# >>> MONK MODE BLOCKER START` / `# <<< MONK MODE BLOCKER END`, both `0.0.0.0` and `::` lines, atomic write, keep other content and CRLF; path override via env `MONK_HOSTS_PATH` for tests; `ipconfig /flushdns` after change. *Acceptance:* tests on temp files: add, update, remove, foreign content preserved, idempotent.
-- [ ] **T2.2** Browser detection (read-only process list via `sysinfo`): is `chrome.exe` / `msedge.exe` / `brave.exe` running. **No process killing.** *Acceptance:* unit test with mocked process list.
-- [ ] **T2.3** Registry lock copy (`HKLM\SOFTWARE\MonkMode\LockEndsAt` + HMAC signature with a machine-specific key). *Acceptance:* round-trip test; tampered value rejected.
+- [x] **T2.1** Hosts file: write a managed block between `# >>> MONK MODE BLOCKER START` / `# <<< MONK MODE BLOCKER END`, both `0.0.0.0` and `::` lines, atomic write, keep other content and CRLF; path override via env `MONK_HOSTS_PATH` for tests; `ipconfig /flushdns` after change. *Acceptance:* tests on temp files: add, update, remove, foreign content preserved, idempotent.
+- [x] **T2.2** Browser detection (read-only process list via `sysinfo`): is `chrome.exe` / `msedge.exe` / `brave.exe` running. **No process killing.** *Acceptance:* unit test with mocked process list.
+  > NOTE: Returns which browsers are running, not just whether any are. F4 applies per browser, so Chrome with the extension must not excuse Edge without it.
+- [x] **T2.3** Registry lock copy (`HKLM\SOFTWARE\MonkMode\LockEndsAt` + HMAC signature with a machine-specific key). *Acceptance:* round-trip test; tampered value rejected.
 
 ### Phase 3 — Background service (`crates/service`)
 - [ ] **T3.1** SQLite db + migrations (5.3) at `C:\ProgramData\MonkMode\monk.db` (override via `MONK_DATA_DIR`). *Acceptance:* migration test on temp dir.
