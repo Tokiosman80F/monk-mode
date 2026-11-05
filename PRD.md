@@ -290,7 +290,7 @@ Text/background pairs used for body text must pass WCAG AA (4.5:1); a unit test 
   > NOTE: Logo and icons are generated (`npm run icons`) and the window title bar icon is verified. Left open because the tray arrives in T5.11 and the extension toolbar is checked when it is loaded in T4.1.
 - [x] **T0.6** Lint/format: ESLint, Prettier, clippy, rustfmt; root scripts `lint`, `test`, `format`. *Acceptance:* `npm run lint` and `cargo clippy --workspace -- -D warnings` pass.
 - [ ] **T0.7** GitHub Actions CI on `windows-latest` (lint + tests + build). *Acceptance:* workflow runs green on push.
-  > NOTE: Workflow written. Left open until it runs green on GitHub after the first push.
+  > NOTE: The owner chose to run CI only in the final phase, so the workflow is manual-only (`workflow_dispatch`) until T7.2. Left open until a run passes.
 
 ### Phase 1 — Core rules engine (`crates/core`, pure Rust, no OS calls)
 - [ ] **T1.1** Models: `Settings`, `Lock`, `UsageDay`, `FocusSession`, `StudyBlock`, `PomodoroState`, `State`; serde + ts-rs derives. Defaults match Section 4 (incl. TikTok domains in always-blocked). *Acceptance:* unit test checks all defaults.
@@ -355,6 +355,7 @@ Text/background pairs used for body text must pass WCAG AA (4.5:1); a unit test 
 ### Phase 7 — Verification
 - [ ] **T7.1** Write `docs/manual-tests.md` covering every item in Section 8.
 - [ ] **T7.2** All automated tests + lint green on Windows CI.
+  > NOTE: Restore the `push` and `pull_request` triggers in `.github/workflows/ci.yml` first; they were removed during development (see T0.7). Until then, phases are checked locally with `npm run lint`, `npm run test`, `cargo clippy` and `cargo test --workspace`.
 - [ ] **T7.3** Run the manual tests on the owner's Windows PC (or a Windows VM) and record results. *Acceptance:* all Section 8 criteria pass, or failures are added as new tasks.
 - [ ] **T7.4** Measure idle CPU/RAM. *Acceptance:* within Section 8 limits.
 - [ ] **T7.5** README: what it is, install, extension setup, how the lock works, limitations, screenshots.
