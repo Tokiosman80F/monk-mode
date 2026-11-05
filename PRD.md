@@ -364,12 +364,13 @@ Text/background pairs used for body text must pass WCAG AA (4.5:1); a unit test 
   > NOTE: Implemented in the hooks and `monk-service install`. Left open until an elevated install is run in T7.3.
 - [ ] **T6.3** Uninstall hook: asks service; aborts with a message while locked; otherwise stops service, removes hosts block, deletes registry key. *Acceptance:* manual test both cases.
   > NOTE: Implemented in the hooks and `monk-service uninstall`. Left open until run in T7.3. Upgrades are also refused during a lock, because Tauri upgrades run the old uninstaller.
-- [ ] **T6.4** Extension packaged as `.zip` CI artifact + README steps for loading it unpacked. *Acceptance:* artifact in CI.
+- [x] **T6.4** Extension packaged as `.zip` CI artifact + README steps for loading it unpacked. *Acceptance:* artifact in CI.
+  > NOTE: The zip is for reference. Normal setup loads the installed folder, which holds the token the extension needs (README).
 
 ### Phase 7 — Verification
 - [x] **T7.1** Write `docs/manual-tests.md` covering every item in Section 8.
-- [ ] **T7.2** All automated tests + lint green on Windows CI.
-  > NOTE: Restore the `push` and `pull_request` triggers in `.github/workflows/ci.yml` first; they were removed during development (see T0.7). Until then, phases are checked locally with `npm run lint`, `npm run test`, `cargo clippy` and `cargo test --workspace`.
+- [x] **T7.2** All automated tests + lint green on Windows CI.
+  > NOTE: Triggers restored. Passed in run 41999201308.
 - [ ] **T7.3** Run the manual tests on the owner's Windows PC (or a Windows VM) and record results. *Acceptance:* all Section 8 criteria pass, or failures are added as new tasks.
 - [x] **T7.4** Measure idle CPU/RAM. *Acceptance:* within Section 8 limits.
   > NOTE: Measured with release builds, idle in the tray: 0.05% CPU and 26 MB working set (service + UI), against limits of 1% and 120 MB. Closing the window destroys it to free WebView2. With the window open, WebView2 brings it to about 150 MB private memory (376 MB working set, which double-counts shared pages), over the limit. That is active use rather than idle, so this is recorded here and not as a failure.
