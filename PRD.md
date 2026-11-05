@@ -282,7 +282,7 @@ Text/background pairs used for body text must pass WCAG AA (4.5:1); a unit test 
 
 ### Phase 0 — Project setup
 - [x] **T0.1** Init git repo, `.gitignore` (Rust, Node, Tauri), `README.md` stub, MIT `LICENSE`. *Acceptance:* first commit exists.
-- [ ] **T0.2** Create Cargo workspace (`crates/core`, `crates/platform`, `crates/service`, `app/src-tauri`) and npm workspaces (`app`, `extension`). *Acceptance:* `cargo build --workspace` and `npm install` succeed on Windows.
+- [x] **T0.2** Create Cargo workspace (`crates/core`, `crates/platform`, `crates/service`, `app/src-tauri`) and npm workspaces (`app`, `extension`). *Acceptance:* `cargo build --workspace` and `npm install` succeed on Windows.
 - [ ] **T0.3** Scaffold Tauri 2 app in `app/` with React + TS + Vite. *Acceptance:* `npm run tauri dev -w app` opens a window showing "Monk Mode".
 - [ ] **T0.4** Add Tailwind + DaisyUI with `monk-light`/`monk-dark` themes, local fonts, keyframes (`breathe`, `fade-up`) and reduced-motion handling as in 6.1; add lucide-react. *Acceptance:* a `btn btn-primary` renders in `#C8643B`; contrast test passes.
 - [ ] **T0.5** Create the original logo SVG (6.1) and generate Tauri + extension icons. *Acceptance:* icon shows in window title bar, tray and extension toolbar.

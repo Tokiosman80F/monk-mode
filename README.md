@@ -9,6 +9,7 @@ Status: in development.
 Needs Node 20+, Rust (MSVC toolchain) and Visual Studio C++ Build Tools.
 
     npm install
+    npm run build -w app   # cargo needs app/dist to exist
     npm run tauri dev -w app
     npm run lint
     npm run test
