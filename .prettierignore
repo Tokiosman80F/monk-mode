@@ -1,0 +1,5 @@
+dist
+target
+PRD.md
+app/src-tauri/gen
+app/src-tauri/icons

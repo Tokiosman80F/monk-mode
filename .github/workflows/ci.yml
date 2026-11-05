@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test
+      - run: cargo fmt --all --check
+      # tauri::generate_context! needs the built frontend to exist.
+      - run: npm run build -w app
+      - run: cargo clippy --workspace -- -D warnings
+      - run: cargo test --workspace
+      - run: npm run build -w extension
+      - run: npm run tauri build -w app
