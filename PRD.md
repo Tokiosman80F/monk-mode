@@ -289,8 +289,8 @@ Text/background pairs used for body text must pass WCAG AA (4.5:1); a unit test 
 - [ ] **T0.5** Create the original logo SVG (6.1) and generate Tauri + extension icons. *Acceptance:* icon shows in window title bar, tray and extension toolbar.
   > NOTE: Logo and icons are generated (`npm run icons`) and the window title bar icon is verified. Left open because the tray arrives in T5.11 and the extension toolbar is checked when it is loaded in T4.1.
 - [x] **T0.6** Lint/format: ESLint, Prettier, clippy, rustfmt; root scripts `lint`, `test`, `format`. *Acceptance:* `npm run lint` and `cargo clippy --workspace -- -D warnings` pass.
-- [ ] **T0.7** GitHub Actions CI on `windows-latest` (lint + tests + build). *Acceptance:* workflow runs green on push.
-  > NOTE: The owner chose to run CI only in the final phase, so the workflow is manual-only (`workflow_dispatch`) until T7.2. Left open until a run passes.
+- [x] **T0.7** GitHub Actions CI on `windows-latest` (lint + tests + build). *Acceptance:* workflow runs green on push.
+  > NOTE: Passed on the first push (run 41985972766). The owner then chose to run CI only in the final phase, so the workflow is manual-only (`workflow_dispatch`) until T7.2.
 
 ### Phase 1 — Core rules engine (`crates/core`, pure Rust, no OS calls)
 - [ ] **T1.1** Models: `Settings`, `Lock`, `UsageDay`, `FocusSession`, `StudyBlock`, `PomodoroState`, `State`; serde + ts-rs derives. Defaults match Section 4 (incl. TikTok domains in always-blocked). *Acceptance:* unit test checks all defaults.
