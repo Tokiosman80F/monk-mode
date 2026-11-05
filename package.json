@@ -10,6 +10,7 @@
     "lint": "eslint . && prettier --check . && npm run typecheck --workspaces",
     "test": "npm run test --workspaces",
     "format": "prettier --write . && cargo fmt --all",
+    "gen:types": "cargo test -p monk-core export_bindings && node --input-type=commonjs -e \"require('fs').cpSync('app/src/types','extension/src/types',{recursive:true})\"",
     "icons": "npm run tauri -w app -- icon src-tauri/icon-source.svg && npm run tauri -w app -- icon src-tauri/icon-source.svg --png 16,32,48,128 -o ../extension/public/icons"
   },
   "devDependencies": {

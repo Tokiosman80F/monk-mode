@@ -293,16 +293,16 @@ Text/background pairs used for body text must pass WCAG AA (4.5:1); a unit test 
   > NOTE: Passed on the first push (run 41985972766). The owner then chose to run CI only in the final phase, so the workflow is manual-only (`workflow_dispatch`) until T7.2.
 
 ### Phase 1 — Core rules engine (`crates/core`, pure Rust, no OS calls)
-- [ ] **T1.1** Models: `Settings`, `Lock`, `UsageDay`, `FocusSession`, `StudyBlock`, `PomodoroState`, `State`; serde + ts-rs derives. Defaults match Section 4 (incl. TikTok domains in always-blocked). *Acceptance:* unit test checks all defaults.
-- [ ] **T1.2** Domain utils: clean/validate input (strip scheme, path, port, `www.`, lowercase), subdomain expansion (`""`, `www.`, `m.`, `mobile.`, `web.`), URL → domain match incl. subdomains. *Acceptance:* ≥ 15 table-driven tests incl. `https://www.YouTube.com/watch?v=1` → `youtube.com`.
-- [ ] **T1.3** Allowance logic: `tick(state, elapsed, now, active_tab)` counts only for a focused + visible allowance-site tab, not during a Pomodoro; returns events (`Warn2Min`, `Warn30s`, `AllowanceUsedUp`). *Acceptance:* tests for background tab, idle, non-allowance site, used up, multiple ticks, Pomodoro running.
-- [ ] **T1.4** Day rollover at local midnight; previous day saved to history. *Acceptance:* tests across midnight and DST change.
-- [ ] **T1.5** Pomodoro state machine: idle → focus → break → idle, counts focus time to the chosen study block. *Acceptance:* tests for full cycle, stop early, rollover during session.
-- [ ] **T1.6** `compute_blocked(state, now, extension_connected) -> BlockedSet { hosts_domains, url_patterns }` combining F1–F4 and F7. *Acceptance:* tests for: always-blocked always present; allowance sites present only when used up / Pomodoro / extension missing; Shorts patterns always present.
-- [ ] **T1.7** Lock validation: `validate_change(old, new, lock, now) -> Result<(), LooseningError>` implementing F5 allowed/forbidden lists. *Acceptance:* one test per allowed and per forbidden change.
-- [ ] **T1.8** Tamper-safe clock: `effective_now(now, last_seen) = max(now, last_seen)`. *Acceptance:* test clock rollback does not end lock or reset allowance.
-- [ ] **T1.9** Streak & stats (F8). *Acceptance:* tests for streak break, partial days, "Day X of 90".
-- [ ] **T1.10** Protocol message enums (5.2) + `npm run gen:types` (ts-rs export). *Acceptance:* generated `.ts` files compile in app and extension.
+- [x] **T1.1** Models: `Settings`, `Lock`, `UsageDay`, `FocusSession`, `StudyBlock`, `PomodoroState`, `State`; serde + ts-rs derives. Defaults match Section 4 (incl. TikTok domains in always-blocked). *Acceptance:* unit test checks all defaults.
+- [x] **T1.2** Domain utils: clean/validate input (strip scheme, path, port, `www.`, lowercase), subdomain expansion (`""`, `www.`, `m.`, `mobile.`, `web.`), URL → domain match incl. subdomains. *Acceptance:* ≥ 15 table-driven tests incl. `https://www.YouTube.com/watch?v=1` → `youtube.com`.
+- [x] **T1.3** Allowance logic: `tick(state, elapsed, now, active_tab)` counts only for a focused + visible allowance-site tab, not during a Pomodoro; returns events (`Warn2Min`, `Warn30s`, `AllowanceUsedUp`). *Acceptance:* tests for background tab, idle, non-allowance site, used up, multiple ticks, Pomodoro running.
+- [x] **T1.4** Day rollover at local midnight; previous day saved to history. *Acceptance:* tests across midnight and DST change.
+- [x] **T1.5** Pomodoro state machine: idle → focus → break → idle, counts focus time to the chosen study block. *Acceptance:* tests for full cycle, stop early, rollover during session.
+- [x] **T1.6** `compute_blocked(state, now, extension_connected) -> BlockedSet { hosts_domains, url_patterns }` combining F1–F4 and F7. *Acceptance:* tests for: always-blocked always present; allowance sites present only when used up / Pomodoro / extension missing; Shorts patterns always present.
+- [x] **T1.7** Lock validation: `validate_change(old, new, lock, now) -> Result<(), LooseningError>` implementing F5 allowed/forbidden lists. *Acceptance:* one test per allowed and per forbidden change.
+- [x] **T1.8** Tamper-safe clock: `effective_now(now, last_seen) = max(now, last_seen)`. *Acceptance:* test clock rollback does not end lock or reset allowance.
+- [x] **T1.9** Streak & stats (F8). *Acceptance:* tests for streak break, partial days, "Day X of 90".
+- [x] **T1.10** Protocol message enums (5.2) + `npm run gen:types` (ts-rs export). *Acceptance:* generated `.ts` files compile in app and extension.
 
 ### Phase 2 — Windows platform layer (`crates/platform`)
 - [ ] **T2.1** Hosts file: write a managed block between `# >>> MONK MODE BLOCKER START` / `# <<< MONK MODE BLOCKER END`, both `0.0.0.0` and `::` lines, atomic write, keep other content and CRLF; path override via env `MONK_HOSTS_PATH` for tests; `ipconfig /flushdns` after change. *Acceptance:* tests on temp files: add, update, remove, foreign content preserved, idempotent.
@@ -380,3 +380,4 @@ Text/background pairs used for body text must pass WCAG AA (4.5:1); a unit test 
 - Code signing
 - Desktop app blocker (kill `.exe` like Spotify/Discord), if ever wanted
 - Accountability partner: weekly report
+- Forward clock tampering: moving the system clock ahead ends a lock early and refills the allowance. F5 only covers rollback; a fix needs a time source the user cannot edit (for example, network time)
