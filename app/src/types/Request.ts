@@ -2,4 +2,8 @@
 import type { ActiveTab } from "./ActiveTab";
 import type { Settings } from "./Settings";
 
-export type Request = { id: string, } & ({ "type": "get_state" } | { "type": "update_settings", "payload": Settings } | { "type": "start_lock", "payload": { ends_at: string, } } | { "type": "start_pomodoro", "payload": { block_name: string, } } | { "type": "stop_pomodoro" } | { "type": "get_stats", "payload": { days: number, } } | { "type": "ext_hello", "payload": { token: string, } } | { "type": "ext_heartbeat" } | { "type": "ext_active_tab", "payload": ActiveTab } | { "type": "ext_blocked_attempt", "payload": { url: string, } });
+export type Request = { id: string, } & ({ "type": "get_state" } | { "type": "update_settings", "payload": Settings } | { "type": "start_lock", "payload": { ends_at: string, } } | { "type": "start_pomodoro", "payload": { block_name: string, } } | { "type": "stop_pomodoro" } | { "type": "get_stats", "payload": { days: number, } } | { "type": "ext_hello", "payload": { token: string, 
+/**
+ * Process name, such as `chrome.exe`.
+ */
+browser: string, } } | { "type": "ext_heartbeat" } | { "type": "ext_active_tab", "payload": ActiveTab } | { "type": "ext_blocked_attempt", "payload": { url: string, } } | { "type": "ui_quit" });

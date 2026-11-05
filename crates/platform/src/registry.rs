@@ -34,19 +34,27 @@ fn absent_to_none<T>(result: windows_registry::Result<T>) -> windows_registry::R
 }
 
 pub struct LockRegistry {
-    root: &'static Key,
+    test_store: bool,
     path: String,
     machine_key: String,
 }
 
 impl LockRegistry {
+    fn root(&self) -> &'static Key {
+        if self.test_store {
+            CURRENT_USER
+        } else {
+            LOCAL_MACHINE
+        }
+    }
+
     /// The real location. Writing needs admin rights, which the service has.
     pub fn machine() -> Result<Self, LockRegistryError> {
         let machine_key = LOCAL_MACHINE
             .open(r"SOFTWARE\Microsoft\Cryptography")?
             .get_string("MachineGuid")?;
         Ok(Self {
-            root: LOCAL_MACHINE,
+            test_store: false,
             path: KEY_PATH.to_string(),
             machine_key,
         })
@@ -74,7 +82,7 @@ impl LockRegistry {
     }
 
     pub fn write(&self, ends_at: DateTime<Utc>) -> Result<(), LockRegistryError> {
-        let key = self.root.create(&self.path)?;
+        let key = self.root().create(&self.path)?;
         key.set_string(ENDS_AT, ends_at.to_rfc3339())?;
         key.set_string(SIGNATURE, self.sign(ends_at))?;
         Ok(())
@@ -82,7 +90,7 @@ impl LockRegistry {
 
     /// The stored end time, or None if nothing is stored. Half a copy counts as tampering.
     pub fn read(&self) -> Result<Option<DateTime<Utc>>, LockRegistryError> {
-        let Some(key) = absent_to_none(self.root.open(&self.path))? else {
+        let Some(key) = absent_to_none(self.root().open(&self.path))? else {
             return Ok(None);
         };
         let ends_at = absent_to_none(key.get_string(ENDS_AT))?;
@@ -103,7 +111,7 @@ impl LockRegistry {
 
     /// Only for the uninstaller once the lock has ended (T6.3).
     pub fn clear(&self) -> Result<(), LockRegistryError> {
-        absent_to_none(self.root.remove_tree(&self.path))?;
+        absent_to_none(self.root().remove_tree(&self.path))?;
         Ok(())
     }
 
@@ -111,7 +119,7 @@ impl LockRegistry {
     #[doc(hidden)]
     pub fn for_tests(path: String, machine_key: &str) -> Self {
         Self {
-            root: CURRENT_USER,
+            test_store: true,
             path,
             machine_key: machine_key.to_string(),
         }
@@ -133,7 +141,7 @@ mod tests {
         }
 
         fn key(&self) -> Key {
-            self.0.root.create(&self.0.path).unwrap()
+            self.0.root().create(&self.0.path).unwrap()
         }
     }
 

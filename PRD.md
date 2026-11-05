@@ -311,16 +311,18 @@ Text/background pairs used for body text must pass WCAG AA (4.5:1); a unit test 
 - [x] **T2.3** Registry lock copy (`HKLM\SOFTWARE\MonkMode\LockEndsAt` + HMAC signature with a machine-specific key). *Acceptance:* round-trip test; tampered value rejected.
 
 ### Phase 3 — Background service (`crates/service`)
-- [ ] **T3.1** SQLite db + migrations (5.3) at `C:\ProgramData\MonkMode\monk.db` (override via `MONK_DATA_DIR`). *Acceptance:* migration test on temp dir.
-- [ ] **T3.2** Main loop: 1 s tick → core engine → enforce hosts (every 5 s or on change) → persist. *Acceptance:* integration test with fake platform layer.
-- [ ] **T3.3** WebSocket server `127.0.0.1:47613` for the extension; accepts only origin `chrome-extension://<fixed id>` + shared token created at install. *Acceptance:* test rejects wrong origin/token.
-- [ ] **T3.4** Named pipe server `\\.\pipe\monkmode` for the UI. *Acceptance:* round-trip `get_state` test.
-- [ ] **T3.5** Handlers for all message types; every settings change goes through `validate_change`. *Acceptance:* `update_settings` loosening while locked returns `LOCKED_LOOSENING`.
-- [ ] **T3.6** Push `state_changed` to all clients (throttled to 1/s). *Acceptance:* test client receives push after tick.
-- [ ] **T3.7** Extension-missing rule (F4): browser running + no heartbeat for 30 s → allowance sites blocked. *Acceptance:* integration test with fake clock.
+- [x] **T3.1** SQLite db + migrations (5.3) at `C:\ProgramData\MonkMode\monk.db` (override via `MONK_DATA_DIR`). *Acceptance:* migration test on temp dir.
+- [x] **T3.2** Main loop: 1 s tick → core engine → enforce hosts (every 5 s or on change) → persist. *Acceptance:* integration test with fake platform layer.
+- [x] **T3.3** WebSocket server `127.0.0.1:47613` for the extension; accepts only origin `chrome-extension://<fixed id>` + shared token created at install. *Acceptance:* test rejects wrong origin/token.
+- [x] **T3.4** Named pipe server `\\.\pipe\monkmode` for the UI. *Acceptance:* round-trip `get_state` test.
+- [x] **T3.5** Handlers for all message types; every settings change goes through `validate_change`. *Acceptance:* `update_settings` loosening while locked returns `LOCKED_LOOSENING`.
+- [x] **T3.6** Push `state_changed` to all clients (throttled to 1/s). *Acceptance:* test client receives push after tick.
+- [x] **T3.7** Extension-missing rule (F4): browser running + no heartbeat for 30 s → allowance sites blocked. *Acceptance:* integration test with fake clock.
 - [ ] **T3.8** Watchdog: restart tray app in the user session if not running (`WTSQueryUserToken` / `CreateProcessAsUser`). *Acceptance:* manual test in `docs/manual-tests.md`; killed app is back in ≤ 10 s.
+  > NOTE: Implemented, with steps in `docs/manual-tests.md` (T3, T4). Left open until run as SYSTEM in T7.3. Adds a `ui_quit` message so Quit in the tray (F9) is not undone by the watchdog; the flag clears when the UI connects again.
 - [ ] **T3.9** Windows Service wrapper (`windows-service`): `install` / `uninstall` / `run` subcommands, auto-start, recovery = restart; refuse stop/uninstall while locked. *Acceptance:* manual test documented; `sc stop MonkModeService` while locked fails or the service comes back.
-- [ ] **T3.10** Logging with `tracing` to `C:\ProgramData\MonkMode\logs\` (rotating, 7 days). *Acceptance:* log file created on run.
+  > NOTE: Implemented, with steps in `docs/manual-tests.md` (T5, T6, T8, T12). Left open until run as SYSTEM in T7.3.
+- [x] **T3.10** Logging with `tracing` to `C:\ProgramData\MonkMode\logs\` (rotating, 7 days). *Acceptance:* log file created on run.
 
 ### Phase 4 — Browser extension (`extension/`)
 - [ ] **T4.1** MV3 scaffold (Vite + TS) with fixed `key` for a stable ID; permissions `tabs`, `storage`, `declarativeNetRequest`, `alarms`, `idle`, host permissions for listed sites. *Acceptance:* loads unpacked in Chrome and Edge without errors.

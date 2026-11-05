@@ -13,14 +13,28 @@ use crate::models::{Settings, State};
 pub enum Message {
     GetState,
     UpdateSettings(Settings),
-    StartLock { ends_at: DateTime<Utc> },
-    StartPomodoro { block_name: String },
+    StartLock {
+        ends_at: DateTime<Utc>,
+    },
+    StartPomodoro {
+        block_name: String,
+    },
     StopPomodoro,
-    GetStats { days: u32 },
-    ExtHello { token: String },
+    GetStats {
+        days: u32,
+    },
+    ExtHello {
+        token: String,
+        /// Process name, such as `chrome.exe`.
+        browser: String,
+    },
     ExtHeartbeat,
     ExtActiveTab(ActiveTab),
-    ExtBlockedAttempt { url: String },
+    ExtBlockedAttempt {
+        url: String,
+    },
+    /// The user chose Quit in the tray, so the watchdog leaves the app closed.
+    UiQuit,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]

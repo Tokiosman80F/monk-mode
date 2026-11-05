@@ -3,3 +3,4 @@
 pub mod browser;
 pub mod hosts;
 pub mod registry;
+pub mod session;
