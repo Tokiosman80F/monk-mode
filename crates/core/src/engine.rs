@@ -306,7 +306,6 @@ mod tests {
             priority: crate::models::Priority::Medium,
             done: false,
             done_on: None,
-            quadrant: crate::models::Quadrant::default(),
             allocated_min: 0,
             subtasks: vec![],
         });

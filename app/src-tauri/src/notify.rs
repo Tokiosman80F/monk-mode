@@ -1,6 +1,6 @@
 //! Which notifications a change of state calls for (F1, F7, F11).
 
-use monk_core::models::{AllowanceSite, PomodoroState, Quadrant, State};
+use monk_core::models::{AllowanceSite, PomodoroState, State};
 
 const TWO_MIN_SEC: u32 = 120;
 const THIRTY_SEC: u32 = 30;
@@ -30,14 +30,14 @@ pub fn allowance_text(state: &State) -> String {
     }
 }
 
-/// The task a one-click start from the tray counts towards: the most pressing unfinished one,
-/// leaving out what the matrix says to drop. With none, the session runs without a task.
+/// The task a one-click start from the tray counts towards: the most important unfinished one.
+/// With none, the session runs without a task.
 pub fn next_task(state: &State) -> Option<u32> {
     state
         .tasks
         .iter()
-        .filter(|task| !task.done && task.quadrant != Quadrant::Eliminate)
-        .min_by_key(|task| (task.quadrant, task.priority))
+        .filter(|task| !task.done)
+        .min_by_key(|task| task.priority)
         .map(|task| task.id)
 }
 
@@ -195,7 +195,6 @@ mod tests {
             priority,
             done,
             done_on: None,
-            quadrant: Quadrant::Schedule,
             allocated_min: 0,
             subtasks: vec![],
         };
@@ -209,13 +208,5 @@ mod tests {
         assert_eq!(next_task(&s), Some(3));
         s.tasks[1].done = false;
         assert_eq!(next_task(&s), Some(2));
-        // The quadrant comes before priority.
-        s.tasks[0].quadrant = Quadrant::DoFirst;
-        assert_eq!(next_task(&s), Some(1));
-        // Nothing to drop gets picked, even when it's all that's left.
-        for task in &mut s.tasks {
-            task.quadrant = Quadrant::Eliminate;
-        }
-        assert_eq!(next_task(&s), None);
     }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { monkDark as t, quadrantColors as q } from "./theme";
+import { monkDark as t } from "./theme";
 
 function luminance(hex: string) {
   const [r, g, b] = [1, 3, 5]
@@ -25,10 +25,6 @@ describe("monk-dark", () => {
     ["error on base-200", t.error, t["base-200"]],
     ["button label on primary", t["primary-content"], t.primary],
     ["label on accent", t["accent-content"], t.accent],
-    ["do first heading", q["q-do"], t["base-200"]],
-    ["schedule heading", q["q-schedule"], t["base-200"]],
-    ["delegate heading", q["q-delegate"], t["base-200"]],
-    ["eliminate heading", q["q-drop"], t["base-200"]],
   ])("%s passes AA", (_, fg, bg) => {
     expect(contrast(fg, bg)).toBeGreaterThanOrEqual(4.5);
   });

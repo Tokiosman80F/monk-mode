@@ -1,5 +1,5 @@
-// Design tokens from PRD 6.1: black and ivory. Colour carries meaning only: one hue per quadrant,
-// jade green for focus, gold for rewards.
+// Design tokens from PRD 6.1: black and ivory. Colour carries meaning only: jade green for focus,
+// gold for rewards, coral for high priority and errors.
 const radii = {
   "--rounded-box": "1.125rem",
   "--rounded-btn": "0.75rem",
@@ -21,13 +21,6 @@ export const monkDark = {
   success: "#6FDDB0",
   warning: "#F2BE5C",
   error: "#FF8A6B",
-};
-
-export const quadrantColors = {
-  "q-do": "#FF8A6B",
-  "q-schedule": "#6FDDB0",
-  "q-delegate": "#8FB8FF",
-  "q-drop": "#A3B3AC",
 };
 
 export const daisyThemes = [{ "monk-dark": { ...monkDark, ...radii } }];

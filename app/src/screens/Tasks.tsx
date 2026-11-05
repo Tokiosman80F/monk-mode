@@ -1,18 +1,15 @@
 import { ChevronRight, Play, Plus, Trash2, X } from "lucide-react";
-import { useRef, useState, type DragEvent } from "react";
+import { useRef, useState } from "react";
 import { api } from "../api";
 import {
+  PRIORITIES,
   PRIORITY_INFO,
-  QUADRANTS,
-  QUADRANT_INFO,
   SUBTASK_XP,
   addSubtask,
   addTask,
   formatDuration,
   nextPriority,
   parseDuration,
-  plannedMin,
-  quadrantOf,
   removeSubtask,
   sortTasks,
   subtasksOverBy,
@@ -21,9 +18,8 @@ import {
 } from "../lib";
 import { applyCall, useStore } from "../store";
 import type { Priority } from "../types/Priority";
-import type { Quadrant } from "../types/Quadrant";
 import type { Task } from "../types/Task";
-import { ErrorNote } from "../ui";
+import { Card, ErrorNote } from "../ui";
 
 const TIME_HINT = "Use a time like 45m, 3h or 1h 30m.";
 
@@ -40,7 +36,7 @@ function PriorityChip({
   return (
     <button
       type="button"
-      className={`btn btn-ghost btn-xs font-medium ${info.tone}`}
+      className={`btn btn-ghost btn-xs w-16 font-medium ${info.tone}`}
       aria-label={`${label}: ${info.label}. Change it`}
       onClick={() => onChange(nextPriority(value))}
     >
@@ -74,7 +70,7 @@ function TimePill({
     return (
       <button
         type="button"
-        className={`btn btn-ghost btn-xs whitespace-nowrap font-normal tabular-nums ${minutes === 0 ? "text-neutral" : ""}`}
+        className={`btn btn-ghost btn-xs w-24 justify-end whitespace-nowrap font-normal tabular-nums ${minutes === 0 ? "text-neutral" : ""}`}
         aria-label={`${label}: ${text}. Change it`}
         onClick={() => setDraft(minutes === 0 ? "" : planned)}
       >
@@ -91,7 +87,7 @@ function TimePill({
   return (
     <input
       autoFocus
-      className="input input-xs input-bordered w-20"
+      className="input input-xs input-bordered w-24"
       aria-label={label}
       placeholder="1h 30m"
       value={draft}
@@ -146,8 +142,8 @@ function SubtaskForm({
         onChange={(e) => setTitle(e.target.value)}
       />
       <input
-        className="input input-sm input-bordered w-20"
-        placeholder="30m"
+        className="input input-sm input-bordered w-24"
+        placeholder="Time"
         aria-label={`Time for the new subtask of ${task.title}`}
         value={time}
         onChange={(e) => setTime(e.target.value)}
@@ -166,6 +162,7 @@ function SubtaskForm({
 
 function TaskRow({
   task,
+  startOpen,
   spentSec,
   canFocus,
   onChange,
@@ -173,13 +170,14 @@ function TaskRow({
   onFocus,
 }: {
   task: Task;
+  startOpen: boolean;
   spentSec: number;
   canFocus: boolean;
   onChange: (next: Task) => void;
   onRemove: () => void;
   onFocus: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(startOpen);
   const [reward, setReward] = useState<number | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>();
   const steps = task.subtasks.length;
@@ -204,12 +202,8 @@ function TaskRow({
   };
 
   return (
-    <li
-      draggable
-      onDragStart={(e) => e.dataTransfer.setData("text/plain", String(task.id))}
-      className="group rounded-btn bg-base-100/60 px-2 py-1.5"
-    >
-      <div className="flex items-center gap-1.5">
+    <li className="group border-t border-base-300 py-2.5 first:border-t-0">
+      <div className="flex items-center gap-2">
         <input
           type="checkbox"
           className="checkbox-primary checkbox checkbox-sm rounded-full"
@@ -217,21 +211,9 @@ function TaskRow({
           checked={task.done}
           onChange={tick}
         />
-        <button
-          className="btn btn-ghost btn-xs px-0.5"
-          aria-label={`${open ? "Hide" : "Show"} subtasks of ${task.title}`}
-          aria-expanded={open}
-          onClick={() => setOpen(!open)}
-        >
-          <ChevronRight
-            size={15}
-            aria-hidden="true"
-            className={`transition-transform duration-150 ${open ? "rotate-90" : ""}`}
-          />
-        </button>
         <span
           title={task.title}
-          className={`min-w-0 flex-1 truncate ${task.done ? "text-neutral line-through" : ""}`}
+          className={`min-w-0 flex-1 truncate text-[15px] ${task.done ? "text-neutral line-through" : ""}`}
         >
           {task.title}
         </span>
@@ -240,22 +222,30 @@ function TaskRow({
             +{reward} XP
           </span>
         )}
-        {steps > 0 && (
-          <span className="text-xs tabular-nums text-neutral">
-            {stepsDone}/{steps}
-          </span>
-        )}
+        <PriorityChip
+          label={`Priority of ${task.title}`}
+          value={task.priority}
+          onChange={(priority) => onChange({ ...task, priority })}
+        />
         <TimePill
           label={`Time for ${task.title}`}
           minutes={task.allocated_min}
           spentSec={spentSec}
           onChange={(allocated_min) => onChange({ ...task, allocated_min })}
         />
-        <PriorityChip
-          label={`Priority of ${task.title}`}
-          value={task.priority}
-          onChange={(priority) => onChange({ ...task, priority })}
-        />
+        <button
+          className="btn btn-ghost btn-xs w-24 justify-end gap-0.5 whitespace-nowrap font-normal text-neutral"
+          aria-label={`${open ? "Hide" : "Show"} subtasks of ${task.title}`}
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
+          {steps > 0 ? `${stepsDone}/${steps}` : "Subtasks"}
+          <ChevronRight
+            size={14}
+            aria-hidden="true"
+            className={`transition-transform duration-150 ${open ? "rotate-90" : ""}`}
+          />
+        </button>
         <span className="flex opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover:opacity-100">
           <button
             className="btn btn-ghost btn-xs px-1"
@@ -275,19 +265,10 @@ function TaskRow({
         </span>
       </div>
 
-      {task.allocated_min > 0 && !task.done && (
-        <progress
-          className="progress progress-secondary mt-1 block h-0.5 w-full"
-          aria-label={`Time spent on ${task.title}`}
-          value={spentSec}
-          max={task.allocated_min * 60}
-        />
-      )}
-
       {open && (
-        <div className="ml-7 mt-2 flex animate-fade-in flex-col gap-1.5 pb-1">
+        <div className="ml-7 mt-2 flex animate-fade-in flex-col gap-1.5">
           {task.subtasks.map((subtask) => (
-            <div key={subtask.id} className="flex items-center gap-1.5">
+            <div key={subtask.id} className="flex items-center gap-2">
               <input
                 type="checkbox"
                 className="checkbox-primary checkbox checkbox-xs rounded-full"
@@ -333,44 +314,21 @@ function TaskRow({
               onChange(addSubtask(task, title, minutes))
             }
           />
-          <div className="flex flex-wrap items-center gap-1 text-xs text-neutral">
-            <span>Move to</span>
-            {QUADRANTS.filter((q) => q !== task.quadrant).map((quadrant) => (
-              <button
-                key={quadrant}
-                className={`btn btn-ghost btn-xs font-normal ${QUADRANT_INFO[quadrant].text}`}
-                onClick={() => onChange({ ...task, quadrant })}
-              >
-                {QUADRANT_INFO[quadrant].name}
-              </button>
-            ))}
-          </div>
         </div>
       )}
     </li>
   );
 }
 
-function Composer({
+function AddTaskForm({
   onAdd,
 }: {
-  onAdd: (
-    title: string,
-    minutes: number,
-    priority: Priority,
-    quadrant: Quadrant,
-  ) => Promise<void>;
+  onAdd: (title: string, priority: Priority, minutes: number) => Promise<void>;
 }) {
   const [title, setTitle] = useState("");
+  const [priority, setPriority] = useState<Priority>("medium");
   const [time, setTime] = useState("");
-  const [urgent, setUrgent] = useState(false);
-  const [important, setImportant] = useState(true);
-  // Follows the quadrant until it's picked by hand.
-  const [picked, setPicked] = useState<Priority | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const quadrant = quadrantOf(urgent, important);
-  const info = QUADRANT_INFO[quadrant];
-  const priority = picked ?? info.priority;
 
   const add = async () => {
     const name = title.trim();
@@ -381,30 +339,15 @@ function Composer({
       return;
     }
     setError(null);
-    await onAdd(name, minutes, priority, quadrant);
+    await onAdd(name, priority, minutes);
     setTitle("");
     setTime("");
-    setPicked(null);
+    setPriority("medium");
   };
-
-  const toggle = (
-    on: boolean,
-    text: string,
-    change: (next: boolean) => void,
-  ) => (
-    <button
-      type="button"
-      aria-pressed={on}
-      className={`btn btn-sm font-medium ${on ? "btn-primary" : "btn-ghost text-neutral"}`}
-      onClick={() => change(!on)}
-    >
-      {text}
-    </button>
-  );
 
   return (
     <form
-      className="flex flex-col gap-2 rounded-box border border-base-300 bg-base-200 p-3"
+      className="flex flex-col gap-2"
       onSubmit={(e) => {
         e.preventDefault();
         void add();
@@ -412,40 +355,47 @@ function Composer({
     >
       <div className="flex flex-wrap items-center gap-2">
         <input
-          className="input input-sm input-ghost min-w-48 flex-1 text-base focus:bg-transparent"
-          placeholder="What needs doing today?"
+          className="input input-bordered min-w-52 flex-1"
+          placeholder="Add a task"
           aria-label="New task"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
         />
+        <div
+          role="group"
+          aria-label="Priority"
+          className="flex rounded-btn border border-base-300 p-1"
+        >
+          {PRIORITIES.map((value) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={priority === value}
+              className={`btn btn-sm border-0 font-medium ${
+                priority === value
+                  ? `bg-base-300 hover:bg-base-300 ${PRIORITY_INFO[value].tone}`
+                  : "btn-ghost text-neutral"
+              }`}
+              onClick={() => setPriority(value)}
+            >
+              {PRIORITY_INFO[value].label}
+            </button>
+          ))}
+        </div>
         <input
-          className="input input-sm input-bordered w-24"
-          placeholder="1h 30m"
-          aria-label="Time for the new task"
+          className="input input-bordered w-32"
+          placeholder="Total time"
+          aria-label="Total time"
           value={time}
           onChange={(e) => setTime(e.target.value)}
         />
-        <button className="btn btn-primary btn-sm" type="submit">
-          <Plus size={16} aria-hidden="true" />
+        <button className="btn btn-primary" type="submit">
+          <Plus size={18} aria-hidden="true" />
           Add
         </button>
       </div>
-      <div className="flex flex-wrap items-center gap-2 pl-1">
-        <span className="text-xs text-neutral">Is it</span>
-        {toggle(urgent, "Urgent", setUrgent)}
-        {toggle(important, "Important", setImportant)}
-        <span className={`text-sm font-medium ${info.text}`}>{info.name}</span>
-        <span className="ml-auto flex items-center gap-1 text-xs text-neutral">
-          Priority
-          <PriorityChip
-            label="New task priority"
-            value={priority}
-            onChange={setPicked}
-          />
-        </span>
-      </div>
       {error && (
-        <p role="alert" className="pl-1 text-sm text-error">
+        <p role="alert" className="text-sm text-error">
           {error}
         </p>
       )}
@@ -453,142 +403,63 @@ function Composer({
   );
 }
 
-function QuadrantPanel({
-  quadrant,
-  tasks,
-  children,
-  onDropTask,
-}: {
-  quadrant: Quadrant;
-  tasks: Task[];
-  children: React.ReactNode;
-  onDropTask: (id: number) => void;
-}) {
-  const info = QUADRANT_INFO[quadrant];
-  const [over, setOver] = useState(false);
-  const planned = plannedMin(tasks);
-  const drop = (e: DragEvent) => {
-    e.preventDefault();
-    setOver(false);
-    const id = Number(e.dataTransfer.getData("text/plain"));
-    if (id) onDropTask(id);
-  };
-
-  return (
-    <section
-      aria-label={info.name}
-      onDragOver={(e) => {
-        e.preventDefault();
-        setOver(true);
-      }}
-      onDragLeave={() => setOver(false)}
-      onDrop={drop}
-      className={`flex min-h-44 min-w-0 flex-col gap-2 rounded-box border-t-2 bg-base-200 p-3 transition-colors duration-150 ${info.border} ${over ? "bg-base-300" : ""}`}
-    >
-      <header className="flex items-baseline justify-between gap-3 px-1">
-        <div className="min-w-0">
-          <h2 className={`font-display text-lg font-medium ${info.text}`}>
-            {info.name}
-          </h2>
-          <p className="truncate text-xs text-neutral">{info.advice}</p>
-        </div>
-        {planned > 0 && (
-          <span className="whitespace-nowrap text-xs tabular-nums text-neutral">
-            {formatDuration(planned * 60)}
-          </span>
-        )}
-      </header>
-      {children}
-    </section>
-  );
-}
-
-const AXIS = "text-xs text-neutral";
-
 export default function Tasks() {
   const state = useStore((s) => s.snapshot?.state);
   const [error, setError] = useState<string | null>(null);
+  const [justAdded, setJustAdded] = useState<number | null>(null);
   if (!state) return null;
 
   const { tasks } = state;
+  const open = tasks.filter((task) => !task.done).length;
   const save = async (next: Task[]) =>
     setError(await applyCall(api.updateTasks(next)));
-  const update = (next: Task) =>
-    void save(tasks.map((t) => (t.id === next.id ? next : t)));
-
-  const panel = (quadrant: Quadrant) => {
-    const own = tasks.filter((task) => task.quadrant === quadrant);
-    return (
-      <QuadrantPanel
-        key={quadrant}
-        quadrant={quadrant}
-        tasks={own}
-        onDropTask={(id) => {
-          const task = tasks.find((t) => t.id === id);
-          if (task && task.quadrant !== quadrant) update({ ...task, quadrant });
-        }}
-      >
-        {own.length === 0 ? (
-          <p className="flex flex-1 items-center justify-center p-4 text-center text-xs text-neutral">
-            {QUADRANT_INFO[quadrant].empty}
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-1">
-            {sortTasks(own).map((task) => (
-              <TaskRow
-                key={task.id}
-                task={task}
-                spentSec={state.today.focus_sec[task.title] ?? 0}
-                canFocus={state.pomodoro.phase === "idle"}
-                onChange={update}
-                onRemove={() =>
-                  void save(tasks.filter((t) => t.id !== task.id))
-                }
-                onFocus={() =>
-                  void applyCall(api.startPomodoro(task.id)).then(setError)
-                }
-              />
-            ))}
-          </ul>
-        )}
-      </QuadrantPanel>
-    );
-  };
 
   return (
-    <section aria-label="Today's tasks" className="flex flex-col gap-3">
-      <Composer
-        onAdd={(title, minutes, priority, quadrant) =>
-          save(addTask(tasks, title, priority, quadrant, minutes))
-        }
+    <Card
+      title="Today's tasks"
+      action={
+        <span className="text-sm text-neutral">
+          {open === 0 && tasks.length > 0 ? "All done" : `${open} left`}
+        </span>
+      }
+    >
+      <AddTaskForm
+        onAdd={async (title, priority, minutes) => {
+          const next = addTask(tasks, title, priority, minutes);
+          // Open the new task, so its subtasks can be added next.
+          setJustAdded(next[next.length - 1].id);
+          await save(next);
+        }}
       />
       <ErrorNote message={error} />
 
-      <div className="grid gap-2 md:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)]">
-        <span className="hidden md:block" />
-        <span className={`hidden text-center md:block ${AXIS}`}>Urgent</span>
-        <span className={`hidden text-center md:block ${AXIS}`}>
-          Not urgent
-        </span>
-        <span
-          className={`hidden rotate-180 self-center [writing-mode:vertical-rl] md:block ${AXIS}`}
-        >
-          Important
-        </span>
-        {panel("do_first")}
-        {panel("schedule")}
-        <span
-          className={`hidden rotate-180 self-center [writing-mode:vertical-rl] md:block ${AXIS}`}
-        >
-          Not important
-        </span>
-        {panel("delegate")}
-        {panel("eliminate")}
-      </div>
+      {tasks.length === 0 ? (
+        <p className="py-8 text-center text-sm text-neutral">
+          Nothing here yet. Add your first task above.
+        </p>
+      ) : (
+        <ul className="flex flex-col">
+          {sortTasks(tasks).map((task) => (
+            <TaskRow
+              key={task.id}
+              task={task}
+              startOpen={task.id === justAdded}
+              spentSec={state.today.focus_sec[task.title] ?? 0}
+              canFocus={state.pomodoro.phase === "idle"}
+              onChange={(next) =>
+                void save(tasks.map((t) => (t.id === next.id ? next : t)))
+              }
+              onRemove={() => void save(tasks.filter((t) => t.id !== task.id))}
+              onFocus={() =>
+                void applyCall(api.startPomodoro(task.id)).then(setError)
+              }
+            />
+          ))}
+        </ul>
+      )}
       <p className="text-xs text-neutral">
-        Drag a task to another box to move it. Unfinished tasks carry over to
-        tomorrow.
+        Unfinished tasks carry over to tomorrow.
       </p>
-    </section>
+    </Card>
   );
 }

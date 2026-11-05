@@ -1,8 +1,8 @@
 # Monk Mode Blocker — Product Requirements Document (PRD)
 
-> **Version:** 1.3 · **Date:** 2026-11-05 · **Owner:** tokiosman96 · **Builder:** Claude Code (the whole app is implemented by Claude Code, task by task, from this file)
+> **Version:** 1.4 · **Date:** 2026-11-05 · **Owner:** tokiosman96 · **Builder:** Claude Code (the whole app is implemented by Claude Code, task by task, from this file)
 >
-> **Status:** v1 built. Version 1.2 adds per-site limits, tasks, XP and a new look at the owner's request (Phase 8). Version 1.3 adds time allocation, the Eisenhower Matrix and a new design system (Phase 9). Where earlier tasks describe the old shared allowance, study blocks or warm theme, Sections 4 to 6 and Phase 8 are what's current.
+> **Status:** v1 built. Version 1.2 adds per-site limits, tasks, XP and a new look at the owner's request (Phase 8). Version 1.3 adds time allocation and a new design system, and 1.4 removes the short-lived Eisenhower Matrix to keep tasks simple (Phase 9). Where earlier tasks describe the old shared allowance, study blocks or warm theme, Sections 4 to 6 and Phase 8 are what's current.
 
 ---
 
@@ -99,12 +99,11 @@ Social media, YouTube and music are the main distractions. On the phone, **Kahf 
 
 ### F7. Today's tasks & Pomodoro
 - **Today's tasks** replace the fixed study blocks. The list starts empty; the user adds and removes tasks.
-- Starting a task means answering the **Eisenhower Matrix**: is it urgent, is it important? That places it in one of four quadrants: **Do first** (both), **Schedule** (important only), **Delegate** (urgent only), **Eliminate** (neither). Tasks can be dragged between quadrants.
-- Each task has **time allocated** (required, for example `3h` or `1h 30m`) and a **priority** (high, medium, low), which starts from the quadrant and can be changed.
+- Tasks are one simple list, most important first. Adding a task takes a title, a **priority** (high, medium, low) and a **total time** (required, for example `3h` or `1h 30m`). The new task then opens so subtasks can be added.
 - Each task can have any number of **subtasks**, which can also be added and removed, each with its own optional time. A task with subtasks is done exactly when all of them are. The app warns when subtasks add up to more than the task's time.
 - Focus time on a task shows against its allocated time, for example `50m / 3h`.
 - Finished tasks leave the list the next day. Unfinished tasks carry over.
-- Pomodoro timer (default 50 min focus / 10 min break, configurable). A session starts on the next most pressing task, on any task from its row, or on none ("Free focus"). Tasks to eliminate are never picked automatically.
+- Pomodoro timer (default 50 min focus / 10 min break, configurable). A session starts on the most important open task, on any task from its row, or on none ("Free focus").
 - While a Pomodoro focus session runs, **all allowance sites are fully blocked** (allowance can't be spent during a session).
 
 ### F8. Stats & streak
@@ -203,7 +202,7 @@ Types are defined once in `crates/core` and exported to TypeScript with **`ts-rs
 
 | Screen | Contents |
 |---|---|
-| **Today** | Time, date and a daily quote; level, streak, focus and planned time; next up and start focus; add a task (title, time, urgent, important, priority); the Eisenhower Matrix with tasks and subtasks |
+| **Today** | Time, date and a daily quote; level, streak, focus and planned time; next up and start focus; add a task (title, priority, total time); the task list with subtasks |
 | **Limits** | Tabs: Daily limits (minutes per site) · Always blocked. Each: list + add input + remove button (remove disabled with tooltip "Locked until …" when locked). Shorts toggle |
 | **Rewards** | Level, XP to next level, badges, how to earn XP |
 | **Stats** | 7/30 day bars, focus per task, tasks finished, blocked attempts |
@@ -215,9 +214,9 @@ Types are defined once in `crates/core` and exported to TypeScript with **`ts-rs
 
 ### 6.1 Design system: black and ivory
 
-**Feel:** a study at night. Black background, ivory text and buttons, a large clock. Colour only carries meaning: one hue per quadrant, jade green for focus, gold for rewards.
+**Feel:** a study at night. Black background, ivory text and buttons, a large clock. Colour only carries meaning: jade green for focus, gold for rewards, coral for high priority and errors.
 
-**Colors** (DaisyUI theme tokens, plus `q-*` in Tailwind)
+**Colors** (DaisyUI theme tokens)
 
 | Token | Value | Use |
 |---|---|---|
@@ -230,7 +229,6 @@ Types are defined once in `crates/core` and exported to TypeScript with **`ts-rs
 | `accent` | `#F2BE5C` | Rewards: level, XP, earned badges, streak |
 | `neutral` | `#A3B3AC` | Muted text, icons |
 | `error` | `#FF8A6B` | Errors, high priority |
-| `q-do` / `q-schedule` / `q-delegate` / `q-drop` | `#FF8A6B` / `#6FDDB0` / `#8FB8FF` / `#A3B3AC` | The four quadrants |
 
 Text/background pairs must pass WCAG AA (4.5:1); a unit test checks them.
 
@@ -240,7 +238,7 @@ Text/background pairs must pass WCAG AA (4.5:1); a unit test checks them.
 
 **Shape & spacing**
 - Radius: box `1.125rem`, button `0.75rem`, badge `1.5rem`.
-- Panels: `base-200` with no shadow. Quadrants have a top edge in their hue.
+- Panels: `base-200` with no shadow.
 - Navigation: 84 px rail with an icon and a label, not icons alone.
 - Max content width 1080 px, centered.
 
@@ -400,11 +398,12 @@ Text/background pairs must pass WCAG AA (4.5:1); a unit test checks them.
   > NOTE: An earlier build reported success but replaced only the app and extension, because the locked service couldn't stop. That left a new app on the old service. It was repaired on the owner's PC, at their request, by swapping the service file by hand during their lock. The lock and rules carried over unchanged.
 - [ ] **T8.5** Check on the owner's PC with the real service: YouTube 30 min and Facebook, Instagram and Messenger 10 min each count separately; a task with subtasks earns XP and survives a restart. *Acceptance:* `docs/manual-tests.md` N1-N3.
 
-### Phase 9 — Time allocation, Eisenhower Matrix and redesign (owner request)
-- [x] **T9.1** Tasks and subtasks get allocated time, and tasks get a quadrant (F7). Older saved tasks still load. *Acceptance:* tests for parsing times, more than 24 hours refused, and old data.
-- [x] **T9.2** Today shows the matrix with drag between quadrants and buttons as a keyboard route, and adding a task asks urgent and important. *Acceptance:* component tests; dragging also checked in a real browser.
+### Phase 9 — Time allocation, simple task list and redesign (owner request)
+- [x] **T9.1** Tasks and subtasks get allocated time (F7). Older saved tasks still load. *Acceptance:* tests for parsing times, more than 24 hours refused, and old data.
+- [x] **T9.2** Add a task with title, priority and total time, and the task opens for subtasks. *Acceptance:* component tests.
+  > NOTE: An Eisenhower Matrix was built here first, and the owner asked to remove it and keep tasks simple. Its field in saved tasks is ignored on load. On the owner's PC only the app and extension were replaced for this, so the service running until the lock ends still carries the unused field, which the app ignores.
 - [x] **T9.3** Remove the time-left section from Today (still on Limits), and add the date, time and a daily quote. *Acceptance:* component tests.
-- [x] **T9.4** New design system (6.1) after looking at planners and matrix apps: fast capture, drag between quadrants and a calm look. *Acceptance:* contrast test passes; screens checked by screenshot.
+- [x] **T9.4** New design system (6.1) after looking at planner apps: fast capture and a calm look. *Acceptance:* contrast test passes; screens checked by screenshot.
   > NOTE: Screenshots used a fake service.
 - [ ] **T9.5** Check on the owner's PC with the real service. *Acceptance:* `docs/manual-tests.md` N4-N5.
 

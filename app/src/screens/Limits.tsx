@@ -23,6 +23,8 @@ const TABS: [Tab, string][] = [
 ];
 const MAX_LIMIT_MIN = 180;
 const NEW_SITE_MIN = 10;
+/** Matches the service's first warning. */
+const LOW_TIME_SEC = 120;
 
 /** Saves when the field is left, so typing "30" doesn't save "3" along the way. */
 function MinutesField({
@@ -173,6 +175,8 @@ export default function Limits() {
           <ul className="flex flex-col">
             {sites.map((site) => {
               const used = siteUsedSec(state, site.domain);
+              const left = siteLeftSec(state, site);
+              const running = left > 0 && left <= LOW_TIME_SEC;
               return (
                 <li
                   key={`${site.domain}-${site.daily_min}`}
@@ -181,11 +185,31 @@ export default function Limits() {
                   <div className="min-w-40 flex-1">
                     <p className="truncate">{site.domain}</p>
                     <p className="text-xs text-neutral">
-                      {formatDuration(used)} used.{" "}
-                      {formatLeft(siteLeftSec(state, site))}
-                      {siteLeftSec(state, site) > 0 && " left"}
+                      {formatDuration(used)} used
                     </p>
+                    <progress
+                      className={`progress mt-1 block h-1 w-full max-w-48 ${running ? "progress-error" : "progress-secondary"}`}
+                      aria-label={`Time left on ${site.domain}`}
+                      value={left}
+                      max={Math.max(site.daily_min * 60, 1)}
+                    />
                   </div>
+                  <p
+                    className={`w-24 text-right font-display text-lg font-medium tabular-nums ${
+                      left === 0
+                        ? "text-neutral"
+                        : running
+                          ? "text-error"
+                          : "text-secondary"
+                    }`}
+                  >
+                    {formatLeft(left)}
+                    {left > 0 && (
+                      <span className="ml-1 text-xs font-normal text-neutral">
+                        left
+                      </span>
+                    )}
+                  </p>
                   <MinutesField
                     site={site}
                     max={locked ? site.daily_min : MAX_LIMIT_MIN}

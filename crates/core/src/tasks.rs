@@ -122,7 +122,7 @@ pub fn prune_tasks(tasks: &mut Vec<Task>, today: NaiveDate) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{Quadrant, Subtask};
+    use crate::models::Subtask;
 
     fn date(d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 11, d).unwrap()
@@ -135,7 +135,6 @@ mod tests {
             priority,
             done,
             done_on: None,
-            quadrant: Quadrant::default(),
             allocated_min: 0,
             subtasks: vec![],
         }
@@ -240,17 +239,15 @@ mod tests {
     }
 
     #[test]
-    fn time_and_quadrant_are_kept_and_earn_nothing_by_themselves() {
+    fn time_is_kept_and_earns_nothing_by_itself() {
         let mut s = State::new(date(5));
         let mut t = task(1, Priority::High, false);
         t.allocated_min = 180;
-        t.quadrant = Quadrant::DoFirst;
         let mut step = subtask(1, false);
         step.allocated_min = 45;
         t.subtasks = vec![step];
         apply(&mut s, vec![t]).unwrap();
         assert_eq!(s.tasks[0].allocated_min, 180);
-        assert_eq!(s.tasks[0].quadrant, Quadrant::DoFirst);
         assert_eq!(s.tasks[0].subtasks[0].allocated_min, 45);
         assert_eq!(s.today.task_xp, 0);
     }
@@ -270,11 +267,10 @@ mod tests {
     }
 
     #[test]
-    fn tasks_saved_before_time_and_quadrants_still_load() {
-        let stored = r#"[{"id":1,"title":"Old","priority":"high","done":false,"done_on":null,
+    fn tasks_saved_before_time_or_with_a_quadrant_still_load() {
+        let stored = r#"[{"id":1,"title":"Old","priority":"high","done":false,"done_on":null,"quadrant":"do_first",
             "subtasks":[{"id":1,"title":"Step","done":false}]}]"#;
         let tasks: Vec<Task> = serde_json::from_str(stored).unwrap();
-        assert_eq!(tasks[0].quadrant, Quadrant::Schedule);
         assert_eq!(tasks[0].allocated_min, 0);
         assert_eq!(tasks[0].subtasks[0].allocated_min, 0);
     }

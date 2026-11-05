@@ -1,10 +1,4 @@
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../api";
@@ -55,11 +49,11 @@ function savedTasks() {
   return vi.mocked(api.updateTasks).mock.calls[0][0];
 }
 
-function fillComposer(title: string, time: string) {
+function fillForm(title: string, time: string) {
   fireEvent.change(screen.getByLabelText("New task"), {
     target: { value: title },
   });
-  fireEvent.change(screen.getByLabelText("Time for the new task"), {
+  fireEvent.change(screen.getByLabelText("Total time"), {
     target: { value: time },
   });
 }
@@ -111,70 +105,78 @@ describe("Today", () => {
 });
 
 describe("Tasks", () => {
-  it("shows all four quadrants with tasks in the right one", () => {
+  it("lists tasks with the most important first, and no matrix", () => {
     setStore();
     render(<Tasks />);
-    const doFirst = screen.getByRole("region", { name: "Do first" });
-    expect(within(doFirst).getByText("Ship the page")).toBeInTheDocument();
+    const boxes = screen.getAllByRole("checkbox", { name: /^Finish / });
+    expect(boxes[0]).toHaveAccessibleName("Finish Ship the page");
+    expect(boxes[1]).toHaveAccessibleName("Finish Learn hooks");
     expect(
-      within(doFirst).getByRole("button", {
-        name: /^Time for Ship the page: 1h 30m/,
-      }),
+      screen.getByRole("button", { name: /^Time for Ship the page: 1h 30m/ }),
     ).toBeInTheDocument();
-    const schedule = screen.getByRole("region", { name: "Schedule" });
-    expect(within(schedule).getByText("Learn hooks")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Delegate" })).toBeVisible();
-    expect(screen.getByRole("region", { name: "Eliminate" })).toBeVisible();
+    expect(screen.queryByText("Do first")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Urgent" })).toBeNull();
   });
 
-  it("adds a task with its time, and the quadrant sets the priority", async () => {
+  it("adds a task with its priority and total time", async () => {
     setStore();
     render(<Tasks />);
-    fillComposer("  Read docs  ", "3h");
-    fireEvent.click(screen.getByRole("button", { name: "Urgent" }));
+    fillForm("  Read docs  ", "3h");
+    fireEvent.click(screen.getByRole("button", { name: "High" }));
+    expect(screen.getByRole("button", { name: "High" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
     await waitFor(() =>
       expect(savedTasks()[2]).toMatchObject({
         id: 3,
         title: "Read docs",
         allocated_min: 180,
-        quadrant: "do_first",
         priority: "high",
       }),
     );
   });
 
-  it("each urgent and important answer picks its quadrant", async () => {
+  it("uses medium priority unless told otherwise", async () => {
     setStore();
     render(<Tasks />);
-    fillComposer("Reply", "10m");
-    fireEvent.click(screen.getByRole("button", { name: "Urgent" }));
-    fireEvent.click(screen.getByRole("button", { name: "Important" }));
+    fillForm("Read", "1h");
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
-    await waitFor(() =>
-      expect(savedTasks()[2]).toMatchObject({
-        quadrant: "delegate",
-        priority: "low",
-      }),
-    );
+    await waitFor(() => expect(savedTasks()[2].priority).toBe("medium"));
   });
 
-  it("lets the priority be changed from what the quadrant suggests", async () => {
-    setStore();
+  it("opens a new task so its subtasks can be added next", async () => {
+    const snapshot = setStore();
+    const next = structuredClone(snapshot);
+    next.state.tasks.push({
+      id: 3,
+      title: "Read",
+      priority: "medium",
+      done: false,
+      done_on: null,
+      allocated_min: 60,
+      subtasks: [],
+    });
+    vi.mocked(api.updateTasks).mockResolvedValue(next);
     render(<Tasks />);
-    fillComposer("Read", "1h");
-    fireEvent.click(screen.getByLabelText(/^New task priority: Medium/));
+    fillForm("Read", "1h");
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
-    await waitFor(() => expect(savedTasks()[2].priority).toBe("low"));
+    expect(
+      await screen.findByLabelText("Add a subtask to Read"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Add a subtask to Learn hooks"),
+    ).not.toBeInTheDocument();
   });
 
   it("needs a time for a new task", () => {
     setStore();
     render(<Tasks />);
-    fillComposer("Read", "");
+    fillForm("Read", "");
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
     expect(screen.getByRole("alert")).toHaveTextContent("How long");
-    fillComposer("Read", "soon");
+    fillForm("Read", "soon");
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
     expect(screen.getByRole("alert")).toHaveTextContent("How long");
     expect(api.updateTasks).not.toHaveBeenCalled();
@@ -295,26 +297,6 @@ describe("Tasks", () => {
     expect(screen.getByText(/20m more than this task/)).toBeInTheDocument();
   });
 
-  it("moves a task by dragging it to another quadrant", async () => {
-    setStore();
-    render(<Tasks />);
-    const data = { getData: () => "1" };
-    fireEvent.drop(screen.getByRole("region", { name: "Delegate" }), {
-      dataTransfer: data,
-    });
-    await waitFor(() => expect(savedTasks()[0].quadrant).toBe("delegate"));
-  });
-
-  it("moves a task with buttons too", async () => {
-    setStore();
-    render(<Tasks />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Show subtasks of Learn hooks" }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Eliminate" }));
-    await waitFor(() => expect(savedTasks()[0].quadrant).toBe("eliminate"));
-  });
-
   it("starts a focus session on a task, unless one is running", async () => {
     setStore();
     const { rerender } = render(<Tasks />);
@@ -428,6 +410,26 @@ describe("Limits", () => {
   function minutes(domain: string) {
     return screen.getByLabelText(`Daily minutes for ${domain}`);
   }
+
+  it("shows the time left for each site", () => {
+    setStore(({ state }) => {
+      state.settings.allowance_sites.push({
+        domain: "x.com",
+        daily_min: 1,
+      });
+      state.today.site_used_sec["x.com"] = 60;
+    });
+    render(<Limits />);
+    const row = (domain: string) => screen.getByText(domain).closest("li")!;
+    expect(row("youtube.com")).toHaveTextContent("28mleft");
+    expect(row("youtube.com")).toHaveTextContent("2m used");
+    expect(row("reddit.com")).toHaveTextContent("10mleft");
+    expect(row("x.com")).toHaveTextContent("Closed");
+    expect(screen.getByLabelText("Time left on youtube.com")).toHaveAttribute(
+      "value",
+      "1680",
+    );
+  });
 
   it("can remove when not locked", async () => {
     setStore();

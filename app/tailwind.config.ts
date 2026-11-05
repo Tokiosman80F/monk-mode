@@ -1,12 +1,11 @@
 import daisyui from "daisyui";
 import plugin from "tailwindcss/plugin";
-import { daisyThemes, quadrantColors } from "./src/theme";
+import { daisyThemes } from "./src/theme";
 
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
-      colors: quadrantColors,
       fontFamily: {
         sans: ['"Inter Tight"', "sans-serif"],
         display: ['"Inter Tight"', "sans-serif"],

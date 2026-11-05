@@ -37,7 +37,6 @@ export function makeSnapshot(): Snapshot {
           priority: "medium",
           done: false,
           done_on: null,
-          quadrant: "schedule",
           allocated_min: 180,
           subtasks: [],
         },
@@ -47,7 +46,6 @@ export function makeSnapshot(): Snapshot {
           priority: "high",
           done: false,
           done_on: null,
-          quadrant: "do_first",
           allocated_min: 90,
           subtasks: [
             { id: 1, title: "Write it", done: true, allocated_min: 30 },

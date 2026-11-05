@@ -608,7 +608,6 @@ pub mod tests {
                 priority: Priority::High,
                 done: false,
                 done_on: None,
-                quadrant: Default::default(),
                 allocated_min: 0,
                 subtasks: vec![],
             };

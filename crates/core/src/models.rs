@@ -91,20 +91,6 @@ pub enum Priority {
     Low,
 }
 
-/// The Eisenhower Matrix: urgent or not, important or not. Most pressing first.
-#[derive(
-    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS,
-)]
-#[serde(rename_all = "snake_case")]
-#[ts(export)]
-pub enum Quadrant {
-    DoFirst,
-    #[default]
-    Schedule,
-    Delegate,
-    Eliminate,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Subtask {
@@ -125,8 +111,6 @@ pub struct Task {
     pub done: bool,
     /// Set by the service. Finished tasks leave the list the day after.
     pub done_on: Option<NaiveDate>,
-    #[serde(default)]
-    pub quadrant: Quadrant,
     /// Minutes set aside. Tasks saved before this existed have none.
     #[serde(default)]
     pub allocated_min: u32,

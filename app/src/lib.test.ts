@@ -15,7 +15,6 @@ import {
   parseDuration,
   plannedMin,
   PRIORITY_INFO,
-  quadrantOf,
   removeSubtask,
   siteLeftSec,
   sortTasks,
@@ -68,29 +67,26 @@ describe("tasks", () => {
   const { tasks } = makeSnapshot().state;
   const [plain, withSteps] = tasks;
 
-  it("adds with the next free ID, its time and quadrant", () => {
-    const added = addTask(tasks, "New", "low", "delegate", 45);
+  it("adds with the next free ID and its time", () => {
+    const added = addTask(tasks, "New", "low", 45);
     expect(added[2]).toMatchObject({
       id: 3,
       title: "New",
       priority: "low",
-      quadrant: "delegate",
       allocated_min: 45,
     });
-    expect(addTask([], "First", "high", "do_first", 5)[0].id).toBe(1);
+    expect(addTask([], "First", "high", 5)[0].id).toBe(1);
   });
 
-  it("sorts open before done, then by quadrant, priority and age", () => {
-    const more = addTask(tasks, "Low", "low", "schedule", 5);
+  it("sorts open before done, then by priority and age", () => {
+    const more = addTask(tasks, "Low", "low", 5);
     const done = more.map((t) => (t.id === 2 ? { ...t, done: true } : t));
     expect(sortTasks(more).map((t) => t.id)).toEqual([2, 1, 3]);
     expect(sortTasks(done).map((t) => t.id)).toEqual([1, 3, 2]);
   });
 
-  it("next up skips finished tasks and anything to eliminate", () => {
+  it("next up skips finished tasks", () => {
     expect(nextTask(tasks)?.id).toBe(2);
-    const drop = tasks.map((t) => ({ ...t, quadrant: "eliminate" as const }));
-    expect(nextTask(drop)).toBeUndefined();
     expect(nextTask([{ ...plain, done: true }])).toBeUndefined();
   });
 
@@ -171,17 +167,8 @@ describe("parseDuration", () => {
   });
 });
 
-describe("the matrix", () => {
-  it.each([
-    [true, true, "do_first"],
-    [false, true, "schedule"],
-    [true, false, "delegate"],
-    [false, false, "eliminate"],
-  ])("urgent %s, important %s is %s", (urgent, important, quadrant) => {
-    expect(quadrantOf(urgent, important)).toBe(quadrant);
-  });
-
-  it("priority cycles", () => {
+describe("priority", () => {
+  it("cycles", () => {
     expect(nextPriority("high")).toBe("medium");
     expect(nextPriority("low")).toBe("high");
   });

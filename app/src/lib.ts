@@ -1,7 +1,6 @@
 import type { AllowanceSite } from "./types/AllowanceSite";
 import type { Lock } from "./types/Lock";
 import type { Priority } from "./types/Priority";
-import type { Quadrant } from "./types/Quadrant";
 import type { State } from "./types/State";
 import type { Task } from "./types/Task";
 import type { UsageDay } from "./types/UsageDay";
@@ -75,64 +74,6 @@ export function nextPriority(priority: Priority): Priority {
   return PRIORITIES[(PRIORITIES.indexOf(priority) + 1) % PRIORITIES.length];
 }
 
-/** In the order they're worked through. */
-export const QUADRANTS: Quadrant[] = [
-  "do_first",
-  "schedule",
-  "delegate",
-  "eliminate",
-];
-
-export const QUADRANT_INFO: Record<
-  Quadrant,
-  {
-    name: string;
-    advice: string;
-    empty: string;
-    priority: Priority;
-    text: string;
-    border: string;
-  }
-> = {
-  do_first: {
-    name: "Do first",
-    advice: "Urgent and important. Do these today.",
-    empty: "Nothing on fire. Good.",
-    priority: "high",
-    text: "text-q-do",
-    border: "border-q-do",
-  },
-  schedule: {
-    name: "Schedule",
-    advice: "Important, not urgent. Give these real time.",
-    empty: "This is where the deep work goes.",
-    priority: "medium",
-    text: "text-q-schedule",
-    border: "border-q-schedule",
-  },
-  delegate: {
-    name: "Delegate",
-    advice: "Urgent, not important. Hand off if you can.",
-    empty: "Nothing to hand off.",
-    priority: "low",
-    text: "text-q-delegate",
-    border: "border-q-delegate",
-  },
-  eliminate: {
-    name: "Eliminate",
-    advice: "Neither. Think about dropping these.",
-    empty: "Nothing to drop.",
-    priority: "low",
-    text: "text-q-drop",
-    border: "border-q-drop",
-  },
-};
-
-export function quadrantOf(urgent: boolean, important: boolean): Quadrant {
-  if (important) return urgent ? "do_first" : "schedule";
-  return urgent ? "delegate" : "eliminate";
-}
-
 const MINUTES_PER_DAY = 24 * 60;
 /** A bare number this size or under means hours, so "3" is 3 hours and "45" is 45 minutes. */
 const BARE_HOURS_UP_TO = 12;
@@ -172,11 +113,9 @@ export function subtasksOverBy(task: Task): number {
   return Math.max(steps - task.allocated_min, 0);
 }
 
-/** The most pressing open task, leaving out what the matrix says to drop. */
+/** The most important open task. */
 export function nextTask(tasks: Task[]): Task | undefined {
-  return sortTasks(tasks).find(
-    (task) => !task.done && task.quadrant !== "eliminate",
-  );
+  return sortTasks(tasks).find((task) => !task.done);
 }
 
 function nextId(items: { id: number }[]): number {
@@ -187,7 +126,6 @@ export function addTask(
   tasks: Task[],
   title: string,
   priority: Priority,
-  quadrant: Quadrant,
   allocated_min: number,
 ): Task[] {
   return [
@@ -198,19 +136,17 @@ export function addTask(
       priority,
       done: false,
       done_on: null,
-      quadrant,
       allocated_min,
       subtasks: [],
     },
   ];
 }
 
-/** Open tasks first, then by quadrant and priority. Within that, oldest first. */
+/** Open tasks first, then by priority. Within that, oldest first. */
 export function sortTasks(tasks: Task[]): Task[] {
   return [...tasks].sort(
     (a, b) =>
       Number(a.done) - Number(b.done) ||
-      QUADRANTS.indexOf(a.quadrant) - QUADRANTS.indexOf(b.quadrant) ||
       PRIORITIES.indexOf(a.priority) - PRIORITIES.indexOf(b.priority) ||
       a.id - b.id,
   );
