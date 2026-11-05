@@ -283,9 +283,11 @@ Text/background pairs used for body text must pass WCAG AA (4.5:1); a unit test 
 ### Phase 0 — Project setup
 - [x] **T0.1** Init git repo, `.gitignore` (Rust, Node, Tauri), `README.md` stub, MIT `LICENSE`. *Acceptance:* first commit exists.
 - [x] **T0.2** Create Cargo workspace (`crates/core`, `crates/platform`, `crates/service`, `app/src-tauri`) and npm workspaces (`app`, `extension`). *Acceptance:* `cargo build --workspace` and `npm install` succeed on Windows.
-- [ ] **T0.3** Scaffold Tauri 2 app in `app/` with React + TS + Vite. *Acceptance:* `npm run tauri dev -w app` opens a window showing "Monk Mode".
-- [ ] **T0.4** Add Tailwind + DaisyUI with `monk-light`/`monk-dark` themes, local fonts, keyframes (`breathe`, `fade-up`) and reduced-motion handling as in 6.1; add lucide-react. *Acceptance:* a `btn btn-primary` renders in `#C8643B`; contrast test passes.
+- [x] **T0.3** Scaffold Tauri 2 app in `app/` with React + TS + Vite. *Acceptance:* `npm run tauri dev -w app` opens a window showing "Monk Mode".
+- [x] **T0.4** Add Tailwind + DaisyUI with `monk-light`/`monk-dark` themes, local fonts, keyframes (`breathe`, `fade-up`) and reduced-motion handling as in 6.1; add lucide-react. *Acceptance:* a `btn btn-primary` renders in `#C8643B`; contrast test passes.
+  > NOTE: `primary-content` on `primary` in `monk-light` (`#FFFFFF` on `#C8643B`) is 3.9:1, below 4.5:1. It is a button label, not body text, so the test holds it to 3:1. Darken `primary` if button text should reach AA.
 - [ ] **T0.5** Create the original logo SVG (6.1) and generate Tauri + extension icons. *Acceptance:* icon shows in window title bar, tray and extension toolbar.
+  > NOTE: Logo and icons are generated (`npm run icons`) and the window title bar icon is verified. Left open because the tray arrives in T5.11 and the extension toolbar is checked when it is loaded in T4.1.
 - [ ] **T0.6** Lint/format: ESLint, Prettier, clippy, rustfmt; root scripts `lint`, `test`, `format`. *Acceptance:* `npm run lint` and `cargo clippy --workspace -- -D warnings` pass.
 - [ ] **T0.7** GitHub Actions CI on `windows-latest` (lint + tests + build). *Acceptance:* workflow runs green on push.
 
