@@ -326,13 +326,17 @@ Text/background pairs used for body text must pass WCAG AA (4.5:1); a unit test 
 
 ### Phase 4 — Browser extension (`extension/`)
 - [ ] **T4.1** MV3 scaffold (Vite + TS) with fixed `key` for a stable ID; permissions `tabs`, `storage`, `declarativeNetRequest`, `alarms`, `idle`, host permissions for listed sites. *Acceptance:* loads unpacked in Chrome and Edge without errors.
-- [ ] **T4.2** WebSocket client: connect, `ext_hello` with token, heartbeat every 5 s, auto-reconnect. *Acceptance:* service logs `ext_hello` and heartbeats.
-- [ ] **T4.3** Active-tab tracker: sends `ext_active_tab` on tab switch, URL change, window focus change and every 5 s; uses `chrome.idle` (idle/locked = not counting). *Acceptance:* Vitest with mocked chrome APIs.
-- [ ] **T4.4** Static Shorts/Reels `declarativeNetRequest` rules (F3) redirecting to the block page. *Acceptance:* manual: `/shorts/x` → block page, `/watch?v=x` plays.
-- [ ] **T4.5** Dynamic rules from service `BlockedSet.url_patterns` → redirect to block page (so blocked tabs already open also get redirected). *Acceptance:* Vitest for rule generation; manual: open YouTube tab is redirected when allowance hits 0.
+  > NOTE: Loads in Edge with the fixed ID, tested with the real service. Chrome no longer allows loading unpacked extensions from the command line, so Chrome stays for manual setup in T7.3. Host permission is `<all_urls>`, because users can add any site and redirect rules need host access to it.
+- [x] **T4.2** WebSocket client: connect, `ext_hello` with token, heartbeat every 5 s, auto-reconnect. *Acceptance:* service logs `ext_hello` and heartbeats.
+- [x] **T4.3** Active-tab tracker: sends `ext_active_tab` on tab switch, URL change, window focus change and every 5 s; uses `chrome.idle` (idle/locked = not counting). *Acceptance:* Vitest with mocked chrome APIs.
+  > NOTE: A tab playing sound still counts when the user is idle, because `chrome.idle` only sees mouse and keyboard input and watching a video would otherwise be free. A muted video with no input for 2 minutes stops counting. A locked PC never counts.
+- [x] **T4.4** Static Shorts/Reels `declarativeNetRequest` rules (F3) redirecting to the block page. *Acceptance:* manual: `/shorts/x` → block page, `/watch?v=x` plays.
+- [x] **T4.5** Dynamic rules from service `BlockedSet.url_patterns` → redirect to block page (so blocked tabs already open also get redirected). *Acceptance:* Vitest for rule generation; manual: open YouTube tab is redirected when allowance hits 0.
 - [ ] **T4.6** Content script hiding YouTube Shorts shelves/links. *Acceptance:* manual check on YouTube home; no console errors.
-- [ ] **T4.7** Block page (F10) styled with the same theme + breathing logo. *Acceptance:* shows progress & streak from service state.
-- [ ] **T4.8** `ext_blocked_attempt` reporting. *Acceptance:* blocked-attempt count increases in db.
+  > NOTE: The CSS is injected on YouTube in Edge. Left open until the shelves are checked by eye (`docs/manual-tests.md` B7), as selectors depend on YouTube's markup.
+- [x] **T4.7** Block page (F10) styled with the same theme + breathing logo. *Acceptance:* shows progress & streak from service state.
+  > NOTE: "Open my plan" sends a new `ext_open_app` message, and the service starts the app in the user session. The token reaches the extension as `token.json`, which the service writes to the installed extension folder.
+- [x] **T4.8** `ext_blocked_attempt` reporting. *Acceptance:* blocked-attempt count increases in db.
 
 ### Phase 5 — Tauri app (`app/`)
 - [ ] **T5.1** Rust commands: named-pipe client exposing `get_state`, `update_settings`, `start_lock`, `start_pomodoro`, `stop_pomodoro`, `get_stats`; forward `state_changed` as a Tauri event. *Acceptance:* invoke from React returns state.

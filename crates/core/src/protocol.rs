@@ -33,6 +33,8 @@ pub enum Message {
     ExtBlockedAttempt {
         url: String,
     },
+    /// "Open my plan" on the block page.
+    ExtOpenApp,
     /// The user chose Quit in the tray, so the watchdog leaves the app closed.
     UiQuit,
 }

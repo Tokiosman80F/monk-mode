@@ -6,4 +6,4 @@ export type Request = { id: string, } & ({ "type": "get_state" } | { "type": "up
 /**
  * Process name, such as `chrome.exe`.
  */
-browser: string, } } | { "type": "ext_heartbeat" } | { "type": "ext_active_tab", "payload": ActiveTab } | { "type": "ext_blocked_attempt", "payload": { url: string, } } | { "type": "ui_quit" });
+browser: string, } } | { "type": "ext_heartbeat" } | { "type": "ext_active_tab", "payload": ActiveTab } | { "type": "ext_blocked_attempt", "payload": { url: string, } } | { "type": "ext_open_app" } | { "type": "ui_quit" });

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Back to work.</title>
+    <link rel="icon" href="icons/32x32.png" />
+  </head>
+  <body class="bg-base-100 text-base-content">
+    <main
+      class="mx-auto flex min-h-screen max-w-md animate-fade-up flex-col items-center justify-center gap-6 p-6 text-center"
+    >
+      <span id="logo" class="w-20 animate-breathe text-primary"></span>
+      <h1 class="font-serif text-5xl font-medium">Back to work.</h1>
+      <p id="streak" class="text-neutral"></p>
+      <section
+        id="progress"
+        class="flex w-full flex-col gap-4 text-left"
+      ></section>
+      <button id="open-plan" class="btn btn-primary">Open my plan</button>
+    </main>
+    <script type="module" src="/src/block.ts"></script>
+  </body>
+</html>

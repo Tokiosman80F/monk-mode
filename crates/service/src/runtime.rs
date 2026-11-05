@@ -121,6 +121,18 @@ pub fn ensure_token(dir: &Path) -> io::Result<String> {
     Ok(token)
 }
 
+/// The extension can't read the data directory, so it gets a copy in its own folder. Does nothing
+/// if that folder isn't there, as in development.
+pub fn write_extension_token(extension_dir: &Path, token: &str) {
+    if !extension_dir.is_dir() {
+        return;
+    }
+    let json = serde_json::json!({ "token": token }).to_string();
+    if let Err(e) = std::fs::write(extension_dir.join("token.json"), json) {
+        error!("Couldn't give the extension its token: {e}");
+    }
+}
+
 pub fn file_logger(
     dir: &Path,
 ) -> Result<RollingFileAppender, tracing_appender::rolling::InitError> {
@@ -170,6 +182,8 @@ pub async fn run(options: RunOptions, shutdown: impl Future<Output = ()>) -> Res
     let registry = LockRegistry::machine().map_err(|e| e.to_string())?;
     let db = Db::open(&dir).map_err(|e| e.to_string())?;
     let token = ensure_token(&dir).map_err(|e| format!("Couldn't create the token: {e}"))?;
+    let exe_dir = std::env::current_exe().map_err(|e| e.to_string())?;
+    write_extension_token(exe_dir.with_file_name("extension").as_path(), &token);
     let daemon = Daemon::new(db, WindowsPlatform { registry }, local_now, Utc::now());
     let shared: Shared<WindowsPlatform> = Arc::new(Mutex::new(daemon));
     let (pushes, _) = broadcast::channel(16);
@@ -227,6 +241,12 @@ pub async fn run(options: RunOptions, shutdown: impl Future<Output = ()>) -> Res
             shared.lock().expect("daemon lock").is_locked(),
             Ordering::Relaxed,
         );
+        let open_app = shared.lock().expect("daemon lock").take_open_app();
+        if options.watchdog && open_app {
+            if let Err(e) = session::launch_in_user_session(&app_exe) {
+                warn!("Couldn't open the app: {e}");
+            }
+        }
         if options.watchdog && seconds % WATCHDOG_EVERY_SEC < elapsed {
             watchdog(&shared, &app_exe);
         }
@@ -267,6 +287,16 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join(TOKEN_FILE), "  ").unwrap();
         assert_eq!(ensure_token(dir.path()).unwrap().len(), 64);
+    }
+
+    #[test]
+    fn the_extension_gets_its_token_only_if_its_folder_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        write_extension_token(&dir.path().join("missing"), "abc");
+        assert!(!dir.path().join("missing").exists());
+        write_extension_token(dir.path(), "abc");
+        let written = std::fs::read_to_string(dir.path().join("token.json")).unwrap();
+        assert_eq!(written, r#"{"token":"abc"}"#);
     }
 
     #[test]

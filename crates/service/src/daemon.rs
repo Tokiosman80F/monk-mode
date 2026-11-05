@@ -112,6 +112,7 @@ pub struct Daemon<P: Platform> {
     saved_day: UsageDay,
     last_push: String,
     ui_quit: bool,
+    open_app: bool,
 }
 
 impl<P: Platform> Daemon<P> {
@@ -168,6 +169,7 @@ impl<P: Platform> Daemon<P> {
             saved_day,
             last_push: String::new(),
             ui_quit: false,
+            open_app: false,
         }
     }
 
@@ -185,6 +187,11 @@ impl<P: Platform> Daemon<P> {
 
     pub fn ui_quit(&self) -> bool {
         self.ui_quit
+    }
+
+    /// Whether the block page asked for the app since the last call.
+    pub fn take_open_app(&mut self) -> bool {
+        std::mem::take(&mut self.open_app)
     }
 
     pub fn ui_connected(&mut self) {
@@ -389,6 +396,10 @@ impl<P: Platform> Daemon<P> {
             }
             (Client::Ext { conn, .. }, Message::ExtActiveTab(tab)) => {
                 self.tabs.insert(*conn, (tab, self.uptime));
+                Ok(Value::Null)
+            }
+            (Client::Ext { .. }, Message::ExtOpenApp) => {
+                self.open_app = true;
                 Ok(Value::Null)
             }
             (Client::Ext { .. }, Message::ExtBlockedAttempt { .. }) => {
@@ -799,6 +810,15 @@ pub mod tests {
             rig.ui(Message::ExtHeartbeat).unwrap_err().0,
             ErrorCode::Unauthorized
         );
+    }
+
+    #[test]
+    fn the_block_page_can_ask_for_the_app_once() {
+        let mut rig = Rig::new();
+        assert!(!rig.daemon.take_open_app());
+        rig.ext(1, "chrome.exe", Message::ExtOpenApp).unwrap();
+        assert!(rig.daemon.take_open_app());
+        assert!(!rig.daemon.take_open_app());
     }
 
     #[test]

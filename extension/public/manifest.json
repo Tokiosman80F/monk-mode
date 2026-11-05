@@ -2,6 +2,11 @@
   "manifest_version": 3,
   "name": "Monk Mode Blocker",
   "version": "0.1.0",
+  "description": "Blocks Shorts and Reels, and measures your daily allowance for the Monk Mode app.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAkMuLLg5CsF3/vF3DFAJTVQGBDDaQwTbfuNcEZrbEDSn3iPrn5SfjA5UOx6FJjFLB+PLqS0KDiyZmWFWlU8iLJPi2l3wKxaRGhriIa51hB1kPEVHMI1vs8thBzjjT1pVTKQxGYmCJ9nDYLjPiRlDrBTNAZC7agQZ7TirTaL8tFLN2ZwcQvB8SNORgCfu+N3qapBdfXYOwRKd+qJ1z4t+9wWtAacB4Go3s97H5fsts9jnlcrU5r5IHavBYH3X0cp2OX0uiLl82ki7DOKDqT6B86hQTu/uMQ/l75/bTsxVWLyxPAKi//ehQJgHndPTRp2/jhTT/FPl7FvqSW6769EgZUQIDAQAB",
+  "minimum_chrome_version": "120",
+  "permissions": ["tabs", "storage", "declarativeNetRequest", "alarms", "idle"],
+  "host_permissions": ["<all_urls>"],
   "icons": {
     "16": "icons/16x16.png",
     "32": "icons/32x32.png",
@@ -9,10 +14,26 @@
     "128": "icons/128x128.png"
   },
   "action": {
+    "default_title": "Monk Mode",
     "default_icon": {
       "16": "icons/16x16.png",
       "32": "icons/32x32.png"
     }
   },
-  "background": { "service_worker": "background.js", "type": "module" }
+  "background": { "service_worker": "background.js", "type": "module" },
+  "content_scripts": [
+    {
+      "matches": ["*://*.youtube.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      { "id": "shorts", "enabled": true, "path": "shorts-rules.json" }
+    ]
+  },
+  "web_accessible_resources": [
+    { "resources": ["block.html"], "matches": ["<all_urls>"] }
+  ]
 }
