@@ -28,11 +28,6 @@
       "run_at": "document_start"
     }
   ],
-  "declarative_net_request": {
-    "rule_resources": [
-      { "id": "shorts", "enabled": true, "path": "shorts-rules.json" }
-    ]
-  },
   "web_accessible_resources": [
     { "resources": ["block.html"], "matches": ["<all_urls>"] }
   ]

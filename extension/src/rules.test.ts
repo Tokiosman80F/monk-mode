@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { buildRules, isBlocked, matchesPattern } from "./rules";
+import manifest from "../public/manifest.json";
+import engine from "../../crates/core/src/engine.rs?raw";
+import {
+  DEFAULT_SHORTS_PATTERNS,
+  buildRules,
+  isBlocked,
+  matchesPattern,
+} from "./rules";
 
 describe("buildRules", () => {
   it("makes one main-frame redirect rule per pattern with unique IDs", () => {
@@ -40,4 +47,30 @@ it("isBlocked checks every pattern", () => {
   expect(isBlocked("https://youtube.com/shorts/1", patterns)).toBe(true);
   expect(isBlocked("https://react.dev/", patterns)).toBe(false);
   expect(isBlocked("https://react.dev/", [])).toBe(false);
+});
+
+describe("default rules", () => {
+  it("match the service's Shorts patterns", () => {
+    for (const pattern of DEFAULT_SHORTS_PATTERNS) {
+      expect(engine).toContain(`"${pattern}"`);
+    }
+    expect(engine.match(/\[&str; (\d+)\] = \[\s*"\|\|youtube/)?.[1]).toBe(
+      String(DEFAULT_SHORTS_PATTERNS.length),
+    );
+  });
+
+  it("block Shorts but not normal videos", () => {
+    expect(
+      isBlocked("https://www.youtube.com/shorts/x", DEFAULT_SHORTS_PATTERNS),
+    ).toBe(true);
+    expect(
+      isBlocked("https://www.youtube.com/watch?v=x", DEFAULT_SHORTS_PATTERNS),
+    ).toBe(false);
+  });
+});
+
+// Browsers compile a static ruleset into the extension's folder. The installed folder is
+// read-only, so declaring one stops the extension loading at all.
+it("declares no static rulesets", () => {
+  expect(manifest).not.toHaveProperty("declarative_net_request");
 });

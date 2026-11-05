@@ -1,6 +1,15 @@
 const BLOCK_PATH = "/block.html";
 
-/** Dynamic rules for the service's `url_patterns`. Static Shorts rules use their own ID space. */
+/** Must match `SHORTS_PATTERNS` in `crates/core/src/engine.rs`. */
+export const DEFAULT_SHORTS_PATTERNS = [
+  "||youtube.com/shorts/",
+  "||instagram.com/reels/",
+  "||instagram.com/reel/",
+  "||facebook.com/reel/",
+  "||facebook.com/watch",
+];
+
+/** Dynamic rules for the service's `url_patterns`. */
 export function buildRules(
   patterns: string[],
 ): chrome.declarativeNetRequest.Rule[] {

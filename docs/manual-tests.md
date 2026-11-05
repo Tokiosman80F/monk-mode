@@ -75,6 +75,12 @@ Hosts file blocks can be skipped when a browser uses DNS over HTTPS (PRD Section
 
 ## Results
 
-| Date | Build | Tests run | Failures |
-| ---- | ----- | --------- | -------- |
-|      |       |           |          |
+| Date       | Build                                                           | Tests run                                                      | Failures                |
+| ---------- | --------------------------------------------------------------- | -------------------------------------------------------------- | ----------------------- |
+| 2026-11-05 | 0.1.0, installed on the owner's PC, tested with a 5-minute lock | Install, T1, T2, T3, T5, T6, T8 (service check only), T10, T13 | None in the final build |
+
+Not yet run: B1-B14, D1-D2, T4, T7, T8 with the real `uninstall.exe`, T9, T11, T12, A1-A8. A8's numbers come from T7.4 in the PRD.
+
+Earlier builds failed T5 (`sc stop` ended the service during a lock) and a reinstall (it broke the data folder's permissions). Both are fixed.
+
+**When testing T1 and T2, edit the file in an admin Notepad.** PowerShell's `Set-Content` left the real hosts file at 0 bytes here with no service involved, which wipes your own lines too. Keep a copy of the file first.

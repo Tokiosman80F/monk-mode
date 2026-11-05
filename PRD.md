@@ -306,6 +306,7 @@ Text/background pairs used for body text must pass WCAG AA (4.5:1); a unit test 
 
 ### Phase 2 — Windows platform layer (`crates/platform`)
 - [x] **T2.1** Hosts file: write a managed block between `# >>> MONK MODE BLOCKER START` / `# <<< MONK MODE BLOCKER END`, both `0.0.0.0` and `::` lines, atomic write, keep other content and CRLF; path override via env `MONK_HOSTS_PATH` for tests; `ipconfig /flushdns` after change. *Acceptance:* tests on temp files: add, update, remove, foreign content preserved, idempotent.
+  > NOTE: An empty file modified in the last 2 s is left for the next check, in case a program is mid-save. A file that is really empty gets its block back within about 7 s instead of 5.
 - [x] **T2.2** Browser detection (read-only process list via `sysinfo`): is `chrome.exe` / `msedge.exe` / `brave.exe` running. **No process killing.** *Acceptance:* unit test with mocked process list.
   > NOTE: Returns which browsers are running, not just whether any are. F4 applies per browser, so Chrome with the extension must not excuse Edge without it.
 - [x] **T2.3** Registry lock copy (`HKLM\SOFTWARE\MonkMode\LockEndsAt` + HMAC signature with a machine-specific key). *Acceptance:* round-trip test; tampered value rejected.
@@ -318,19 +319,20 @@ Text/background pairs used for body text must pass WCAG AA (4.5:1); a unit test 
 - [x] **T3.5** Handlers for all message types; every settings change goes through `validate_change`. *Acceptance:* `update_settings` loosening while locked returns `LOCKED_LOOSENING`.
 - [x] **T3.6** Push `state_changed` to all clients (throttled to 1/s). *Acceptance:* test client receives push after tick.
 - [x] **T3.7** Extension-missing rule (F4): browser running + no heartbeat for 30 s → allowance sites blocked. *Acceptance:* integration test with fake clock.
-- [ ] **T3.8** Watchdog: restart tray app in the user session if not running (`WTSQueryUserToken` / `CreateProcessAsUser`). *Acceptance:* manual test in `docs/manual-tests.md`; killed app is back in ≤ 10 s.
-  > NOTE: Implemented, with steps in `docs/manual-tests.md` (T3, T4). Left open until run as SYSTEM in T7.3. Adds a `ui_quit` message so Quit in the tray (F9) is not undone by the watchdog; the flag clears when the UI connects again.
-- [ ] **T3.9** Windows Service wrapper (`windows-service`): `install` / `uninstall` / `run` subcommands, auto-start, recovery = restart; refuse stop/uninstall while locked. *Acceptance:* manual test documented; `sc stop MonkModeService` while locked fails or the service comes back.
-  > NOTE: Implemented, with steps in `docs/manual-tests.md` (T5, T6, T8, T12). Left open until run as SYSTEM in T7.3.
+- [x] **T3.8** Watchdog: restart tray app in the user session if not running (`WTSQueryUserToken` / `CreateProcessAsUser`). *Acceptance:* manual test in `docs/manual-tests.md`; killed app is back in ≤ 10 s.
+  > NOTE: Tested as SYSTEM on the owner's PC: a killed app was back in 2.8 s. Adds a `ui_quit` message so Quit in the tray (F9) is not undone by the watchdog; the flag clears when the UI connects again.
+- [x] **T3.9** Windows Service wrapper (`windows-service`): `install` / `uninstall` / `run` subcommands, auto-start, recovery = restart; refuse stop/uninstall while locked. *Acceptance:* manual test documented; `sc stop MonkModeService` while locked fails or the service comes back.
+  > NOTE: Tested on the owner's PC with a 5-minute lock: `sc stop` fails with 1052, even after a restart, and a killed service was back in 1.1 s, then 5.1 s. Stop must be refused through the accepted controls, because `windows-service` frees the handler after any Stop, even a refused one, which ended the service in an earlier build. Uninstall steps are T8 and T12.
 - [x] **T3.10** Logging with `tracing` to `C:\ProgramData\MonkMode\logs\` (rotating, 7 days). *Acceptance:* log file created on run.
 
 ### Phase 4 — Browser extension (`extension/`)
 - [ ] **T4.1** MV3 scaffold (Vite + TS) with fixed `key` for a stable ID; permissions `tabs`, `storage`, `declarativeNetRequest`, `alarms`, `idle`, host permissions for listed sites. *Acceptance:* loads unpacked in Chrome and Edge without errors.
-  > NOTE: Loads in Edge with the fixed ID, tested with the real service. Chrome no longer allows loading unpacked extensions from the command line, so Chrome stays for manual setup in T7.3. Host permission is `<all_urls>`, because users can add any site and redirect rules need host access to it.
+  > NOTE: Loads in Edge with the fixed ID, tested with the real service. Also loads from the read-only installed folder. Chrome no longer allows loading unpacked extensions from the command line, so Chrome stays for manual setup in T7.3. Host permission is `<all_urls>`, because users can add any site and redirect rules need host access to it.
 - [x] **T4.2** WebSocket client: connect, `ext_hello` with token, heartbeat every 5 s, auto-reconnect. *Acceptance:* service logs `ext_hello` and heartbeats.
 - [x] **T4.3** Active-tab tracker: sends `ext_active_tab` on tab switch, URL change, window focus change and every 5 s; uses `chrome.idle` (idle/locked = not counting). *Acceptance:* Vitest with mocked chrome APIs.
   > NOTE: A tab playing sound still counts when the user is idle, because `chrome.idle` only sees mouse and keyboard input and watching a video would otherwise be free. A muted video with no input for 2 minutes stops counting. A locked PC never counts.
 - [x] **T4.4** Static Shorts/Reels `declarativeNetRequest` rules (F3) redirecting to the block page. *Acceptance:* manual: `/shorts/x` → block page, `/watch?v=x` plays.
+  > NOTE: Uses dynamic rules set on install, not a static ruleset. Browsers compile static rulesets into the extension folder, and the installed folder is read-only, so the extension failed to load with "Internal error while parsing rules".
 - [x] **T4.5** Dynamic rules from service `BlockedSet.url_patterns` → redirect to block page (so blocked tabs already open also get redirected). *Acceptance:* Vitest for rule generation; manual: open YouTube tab is redirected when allowance hits 0.
 - [ ] **T4.6** Content script hiding YouTube Shorts shelves/links. *Acceptance:* manual check on YouTube home; no console errors.
   > NOTE: The CSS is injected on YouTube in Edge. Left open until the shelves are checked by eye (`docs/manual-tests.md` B7), as selectors depend on YouTube's markup.
@@ -360,10 +362,10 @@ Text/background pairs used for body text must pass WCAG AA (4.5:1); a unit test 
 ### Phase 6 — Installer & packaging
 - [x] **T6.1** Tauri NSIS bundle (per-machine, admin), includes `monk-service.exe`. *Acceptance:* `npm run tauri build -w app` produces an installer in CI.
   > NOTE: Files are copied by `installer/hooks.nsh` rather than Tauri resources, so a plain `cargo build` does not need release builds of the service and extension to exist.
-- [ ] **T6.2** Install hook: install + start service, create extension token, create `C:\ProgramData\MonkMode` with ACL (SYSTEM + Admins write, Users read), apply TikTok block immediately. *Acceptance:* fresh Windows install → service running, tiktok.com blocked.
-  > NOTE: Implemented in the hooks and `monk-service install`. Left open until an elevated install is run in T7.3.
+- [x] **T6.2** Install hook: install + start service, create extension token, create `C:\ProgramData\MonkMode` with ACL (SYSTEM + Admins write, Users read), apply TikTok block immediately. *Acceptance:* fresh Windows install → service running, tiktok.com blocked.
+  > NOTE: Tested on the owner's PC: service running as LocalSystem with auto-start and restart on failure, tiktok.com blocked, folder permissions correct, and a normal user can't write the database. Reinstalling resets existing files to inherit those permissions, because an earlier build left them with no access at all and the service didn't start.
 - [ ] **T6.3** Uninstall hook: asks service; aborts with a message while locked; otherwise stops service, removes hosts block, deletes registry key. *Acceptance:* manual test both cases.
-  > NOTE: Implemented in the hooks and `monk-service uninstall`. Left open until run in T7.3. Upgrades are also refused during a lock, because Tauri upgrades run the old uninstaller.
+  > NOTE: `monk-service uninstall` refused during a lock on the owner's PC. Left open because the real `uninstall.exe` and the unlocked case have not been run (`docs/manual-tests.md` T8, T12). Upgrades are also refused during a lock, because Tauri upgrades run the old uninstaller.
 - [x] **T6.4** Extension packaged as `.zip` CI artifact + README steps for loading it unpacked. *Acceptance:* artifact in CI.
   > NOTE: The zip is for reference. Normal setup loads the installed folder, which holds the token the extension needs (README).
 

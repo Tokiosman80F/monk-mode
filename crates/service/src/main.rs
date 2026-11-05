@@ -5,9 +5,6 @@ mod runtime;
 mod winsvc;
 mod ws;
 
-use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
-
 const USAGE: &str = "Usage: monk-service <install | uninstall | run | console>
   install    Install and start the Windows Service (admin)
   uninstall  Remove it, unless a lock is active (admin)
@@ -19,7 +16,7 @@ fn console() -> Result<(), String> {
     let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     let options = runtime::RunOptions {
         watchdog: false,
-        locked: Arc::new(AtomicBool::new(false)),
+        on_lock_change: Box::new(|_| {}),
     };
     runtime.block_on(runtime::run(options, async {
         let _ = tokio::signal::ctrl_c().await;

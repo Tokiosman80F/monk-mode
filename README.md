@@ -60,7 +60,7 @@ The goal is to make giving up slow and annoying, not impossible. An admin user c
 - **Secure DNS (DNS over HTTPS)** can skip the hosts file in a browser. The extension still blocks the site there.
 - **A muted video** with no mouse or keyboard input stops counting after 2 minutes, because the browser reports you as idle.
 - **Upgrades** can't be installed during a lock, because upgrading runs the old uninstaller.
-- **Antivirus tools** may flag the hosts file edits, since the app isn't code-signed yet.
+- **Antivirus tools** may flag the app, since it edits the hosts file and isn't code-signed yet. Windows Defender flagged the installer as `Trojan:Win32/Bearfoos.B!ml` during testing, a machine-learning detection. Only install a copy you built or got from this repo's CI.
 
 ## How it's built
 

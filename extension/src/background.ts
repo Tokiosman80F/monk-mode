@@ -1,4 +1,4 @@
-import { buildRules, isBlocked } from "./rules";
+import { DEFAULT_SHORTS_PATTERNS, buildRules, isBlocked } from "./rules";
 import { browserProcess, currentTab } from "./tracker";
 import { SHORTS_KEY, STATE_KEY } from "./view";
 import type { BlockedSet } from "./types/BlockedSet";
@@ -10,7 +10,6 @@ const HEARTBEAT_MS = 5000;
 const RECONNECT_MS = 2000;
 const IDLE_AFTER_SEC = 120;
 const WAKE_ALARM = "wake";
-const SHORTS_RULESET = "shorts";
 
 let socket: WebSocket | null = null;
 let heartbeat: ReturnType<typeof setInterval> | undefined;
@@ -19,6 +18,7 @@ let connecting = false;
 let pendingAttempts = 0;
 let idleState: chrome.idle.IdleState = "active";
 let patterns: string[] = [];
+let ruleUpdates = Promise.resolve();
 let nextId = 1;
 
 function send(message: Message) {
@@ -40,7 +40,7 @@ function moveToBlockPage(tabId: number) {
   void chrome.tabs.update(tabId, { url: chrome.runtime.getURL("block.html") });
 }
 
-async function applyPatterns(next: string[]) {
+async function replaceRules(next: string[]) {
   if (JSON.stringify(next) === JSON.stringify(patterns)) return;
   patterns = next;
 
@@ -57,19 +57,31 @@ async function applyPatterns(next: string[]) {
   }
 }
 
-async function applyShortsSetting(enabled: boolean) {
-  await chrome.storage.local.set({ [SHORTS_KEY]: enabled });
-  await chrome.declarativeNetRequest.updateEnabledRulesets(
-    enabled
-      ? { enableRulesetIds: [SHORTS_RULESET] }
-      : { disableRulesetIds: [SHORTS_RULESET] },
-  );
+/** One at a time: two overlapping updates would both add the same rule IDs. */
+function queueRules(update: () => Promise<void>) {
+  ruleUpdates = ruleUpdates.then(update).catch((error) => {
+    console.warn("Monk Mode couldn't update its rules:", error);
+  });
+}
+
+/**
+ * No static ruleset in the manifest: browsers compile those into the extension's own folder, and
+ * the installed folder is read-only, so the extension wouldn't load at all. Dynamic rules live in
+ * the browser profile. These hold until the service first answers, and if it's ever down.
+ */
+function installDefaultRules() {
+  queueRules(async () => {
+    const existing = await chrome.declarativeNetRequest.getDynamicRules();
+    if (existing.length === 0) await replaceRules(DEFAULT_SHORTS_PATTERNS);
+  });
 }
 
 async function applyService(data: { state: State; blocked: BlockedSet }) {
   await chrome.storage.session.set({ [STATE_KEY]: data.state });
-  await applyShortsSetting(data.state.settings.shorts_blocker_enabled);
-  await applyPatterns(data.blocked.url_patterns);
+  await chrome.storage.local.set({
+    [SHORTS_KEY]: data.state.settings.shorts_blocker_enabled,
+  });
+  queueRules(() => replaceRules(data.blocked.url_patterns));
 }
 
 function onServiceMessage(text: string) {
@@ -123,6 +135,7 @@ async function connect() {
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.alarms.create(WAKE_ALARM, { periodInMinutes: 0.5 });
+  installDefaultRules();
 });
 // The worker can be stopped while the service is down. This brings it back to try again.
 chrome.alarms.onAlarm.addListener(() => void connect());

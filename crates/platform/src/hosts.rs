@@ -6,11 +6,13 @@ use std::io::{self, ErrorKind, Write};
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 
 const START: &[u8] = b"# >>> MONK MODE BLOCKER START";
 const END: &[u8] = b"# <<< MONK MODE BLOCKER END";
 const CRLF: &[u8] = b"\r\n";
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+const SAVE_IN_PROGRESS_WINDOW: Duration = Duration::from_secs(2);
 
 fn system32() -> PathBuf {
     let root = std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into());
@@ -92,13 +94,27 @@ fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
     result
 }
 
+/// Programs often empty a file, then write it, as they save. Writing our block during that gap
+/// would save over everything they're about to put there.
+fn is_being_saved(path: &Path) -> bool {
+    fs::metadata(path)
+        .and_then(|metadata| metadata.modified())
+        .ok()
+        .and_then(|modified| modified.elapsed().ok())
+        .is_some_and(|age| age < SAVE_IN_PROGRESS_WINDOW)
+}
+
 /// Makes the file match `domains`. Returns true if it had to change, and doesn't touch it if not.
+/// An empty file modified moments ago is left for the next check.
 pub fn apply(path: &Path, domains: &[String]) -> io::Result<bool> {
     let existing = match fs::read(path) {
         Ok(bytes) => bytes,
         Err(e) if e.kind() == ErrorKind::NotFound => Vec::new(),
         Err(e) => return Err(e),
     };
+    if existing.is_empty() && is_being_saved(path) {
+        return Ok(false);
+    }
     let wanted = render(&existing, domains);
     if wanted == existing {
         return Ok(false);
@@ -134,6 +150,7 @@ pub fn enforce(domains: &[String]) -> io::Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::SystemTime;
 
     const FOREIGN: &[u8] = b"# My hosts\r\n127.0.0.1 dev.local\r\n";
 
@@ -250,6 +267,34 @@ mod tests {
         let (_dir, path) = temp_hosts(b"x\r\n# <<< MONK MODE BLOCKER END\r\ny\r\n");
         apply(&path, &[]).unwrap();
         assert_eq!(fs::read(&path).unwrap(), b"x\r\ny\r\n");
+    }
+
+    /// A save in progress can leave the file empty for a moment.
+    #[test]
+    fn a_file_emptied_moments_ago_is_left_alone_until_the_save_finishes() {
+        let (_dir, path) = temp_hosts(b"");
+        assert!(!apply(&path, &domains(&["a.com"])).unwrap());
+        assert_eq!(fs::read(&path).unwrap(), b"");
+
+        fs::write(&path, FOREIGN).unwrap();
+        assert!(apply(&path, &domains(&["a.com"])).unwrap());
+        let mut expected = FOREIGN.to_vec();
+        expected.extend(block(&["a.com"]));
+        assert_eq!(fs::read(&path).unwrap(), expected);
+    }
+
+    #[test]
+    fn a_file_that_stays_empty_still_gets_the_block() {
+        let (_dir, path) = temp_hosts(b"");
+        let old = SystemTime::now() - SAVE_IN_PROGRESS_WINDOW * 2;
+        fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+        assert!(apply(&path, &domains(&["a.com"])).unwrap());
+        assert_eq!(fs::read(&path).unwrap(), block(&["a.com"]));
     }
 
     #[test]

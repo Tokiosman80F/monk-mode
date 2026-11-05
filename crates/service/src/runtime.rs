@@ -3,7 +3,6 @@
 use std::future::Future;
 use std::io;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -168,8 +167,8 @@ fn watchdog<P: Platform>(shared: &Shared<P>, exe: &Path) {
 pub struct RunOptions {
     /// Restart the app if it's closed. Needs SYSTEM, so only the real service turns it on.
     pub watchdog: bool,
-    /// Kept up to date for the service's stop handler.
-    pub locked: Arc<AtomicBool>,
+    /// Called with the lock state at the first tick, and whenever it changes.
+    pub on_lock_change: Box<dyn Fn(bool) + Send>,
 }
 
 /// Runs until `shutdown` completes. Runs forever in the real service unless told to stop.
@@ -213,6 +212,7 @@ pub async fn run(options: RunOptions, shutdown: impl Future<Output = ()>) -> Res
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut last = Instant::now();
     let mut seconds: u64 = 0;
+    let mut reported_lock = None;
     tokio::pin!(shutdown);
 
     loop {
@@ -237,10 +237,11 @@ pub async fn run(options: RunOptions, shutdown: impl Future<Output = ()>) -> Res
         for event in events {
             info!("{}", describe(&event));
         }
-        options.locked.store(
-            shared.lock().expect("daemon lock").is_locked(),
-            Ordering::Relaxed,
-        );
+        let locked = shared.lock().expect("daemon lock").is_locked();
+        if reported_lock != Some(locked) {
+            (options.on_lock_change)(locked);
+            reported_lock = Some(locked);
+        }
         let open_app = shared.lock().expect("daemon lock").take_open_app();
         if options.watchdog && open_app {
             if let Err(e) = session::launch_in_user_session(&app_exe) {
