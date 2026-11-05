@@ -1,8 +1,8 @@
 # Monk Mode Blocker — Product Requirements Document (PRD)
 
-> **Version:** 1.1 · **Date:** 2026-11-05 · **Owner:** tokiosman96 · **Builder:** Claude Code (the whole app is implemented by Claude Code, task by task, from this file)
+> **Version:** 1.2 · **Date:** 2026-11-05 · **Owner:** tokiosman96 · **Builder:** Claude Code (the whole app is implemented by Claude Code, task by task, from this file)
 >
-> **Status:** not started. The project is built from scratch; there is no earlier code to port.
+> **Status:** v1 built. Version 1.2 adds per-site limits, tasks, XP and a new look at the owner's request (Phase 8). Where earlier tasks describe the old shared allowance, study blocks or warm theme, Sections 4 to 6 and Phase 8 are what's current.
 
 ---
 
@@ -31,10 +31,10 @@ The user is doing **3 months of "monk mode"**: 12 hours of study a day:
 Social media, YouTube and music are the main distractions. On the phone, **Kahf Guard** (DNS filtering + Reels/Shorts blocking + strict uninstall protection) solves this. On the desktop there is no free tool that combines all three in a way that can't be undone on a bad day; Cold Turkey Pro costs $45.
 
 **Goal:** a free desktop app that:
-- gives a **small daily allowance** (default 10 min) for distracting sites, then **hard-blocks** them until midnight;
+- gives each distracting site its **own daily limit** (YouTube 30 min for study, others 10 min), then **hard-blocks** it until midnight;
 - **permanently blocks** the worst sites (TikTok);
 - **cannot be weakened** before a chosen commitment end date (e.g. 3 months);
-- helps the user **follow the 12-hour study plan** and see their streak.
+- helps the user **work through today's tasks**, see their streak, and earn XP for it.
 
 ---
 
@@ -60,11 +60,12 @@ Social media, YouTube and music are the main distractions. On the phone, **Kahf 
 ## 4. Features
 
 ### F1. Daily allowance (core)
-- One shared **daily allowance** for all "allowance" sites. Default **10 minutes**, configurable 0–60.
+- Each "allowance" site has its **own daily limit**, configurable 0–180 minutes. Defaults: YouTube **30 minutes**, every other site **10 minutes**.
+- A subdomain also counts towards its main site's limit, and closes with it. So `music.youtube.com` uses YouTube's time, and adding a subdomain with a bigger limit can't get around a limit.
 - Time is counted **only while an allowance site is the active, focused, visible tab** (measured by the extension), not while it's open in the background or while the PC is idle/locked.
-- When the allowance hits 0 → all allowance sites are added to the hosts file and the extension shows the block page. They stay blocked until **local midnight**, then the allowance resets.
-- Warnings: notification at **2 min left** and **30 s left**.
-- Default allowance sites: `youtube.com, facebook.com, instagram.com, x.com, twitter.com, reddit.com, open.spotify.com, music.youtube.com, soundcloud.com`.
+- When a site's limit hits 0 → that site is added to the hosts file and the extension shows the block page. It stays blocked until **local midnight**, then the limits reset. Other sites stay open.
+- Warnings per site: notification at **2 min left** and **30 s left**.
+- Default allowance sites: `youtube.com, facebook.com, instagram.com, messenger.com, x.com, twitter.com, reddit.com, open.spotify.com, music.youtube.com, soundcloud.com`.
 
 ### F2. Always-blocked list
 - Sites blocked **24/7** with no allowance, through the hosts file.
@@ -83,8 +84,8 @@ Social media, YouTube and music are the main distractions. On the phone, **Kahf 
 ### F5. Commitment lock (strict mode)
 - User picks an end date (presets: 1 week, 1 month, **3 months**, custom).
 - While locked, the user **can only make rules stricter**:
-  - **Allowed:** add allowance sites, add always-blocked sites, move a site from allowance to always-blocked, lower the daily allowance.
-  - **Forbidden:** remove any site, move a site from always-blocked to allowance, raise the allowance, turn off the Shorts/Reels blocker, remove or shorten the lock, stop/disable the service, uninstall.
+  - **Allowed:** add allowance sites, add always-blocked sites, move a site from allowance to always-blocked, lower a site's daily limit.
+  - **Forbidden:** remove any site, move a site from always-blocked to allowance, raise a site's daily limit, turn off the Shorts/Reels blocker, remove or shorten the lock, stop/disable the service, uninstall.
 - Confirmation dialog before locking with a typed phrase: `I commit to monk mode`.
 - Lock end time is stored in the database **and** a signed copy in the Windows registry (`HKLM\SOFTWARE\MonkMode`), so deleting one doesn't unlock.
 - Changing the system clock backwards must not shorten the lock: the service stores the last-seen time and treats `max(now, lastSeen)` as "now".
@@ -96,14 +97,15 @@ Social media, YouTube and music are the main distractions. On the phone, **Kahf 
 - While locked: the uninstaller refuses to run (it asks the service, and the service says no until the lock date). Service stop requests from the UI are refused.
 - Honest limitation (show in About screen): an admin user who boots into Safe Mode or reinstalls Windows can get around this. The goal is to make giving up **slow and annoying**, not impossible.
 
-### F7. Study planner & Pomodoro
-- Daily plan with 3 default blocks: **React 3h, Building 6h, LinkedIn course 2h** (editable names and hours).
-- Pomodoro timer (default 50 min focus / 10 min break, configurable). User picks which block a session counts towards.
+### F7. Today's tasks & Pomodoro
+- **Today's tasks** replace the fixed study blocks. The list starts empty; the user adds and removes tasks.
+- Each task has a **priority** (high, medium, low) and any number of **subtasks**, which can also be added and removed. A task with subtasks is done exactly when all of them are.
+- Finished tasks leave the list the next day. Unfinished tasks carry over.
+- Pomodoro timer (default 50 min focus / 10 min break, configurable). User picks a task for a session, or none ("Free focus").
 - While a Pomodoro focus session runs, **all allowance sites are fully blocked** (allowance can't be spent during a session).
-- Today view shows a progress bar per block, e.g. `React 1h 40m / 3h`.
 
 ### F8. Stats & streak
-- Per day: focus time per block, allowance used, number of blocked attempts.
+- Per day: focus time per task, time used per site, tasks finished, number of blocked attempts.
 - **Streak**: consecutive days where total focus ≥ the daily target (default 11h; configurable).
 - "Day X of 90" counter while a commitment lock is active.
 - Simple 7-day and 30-day bar charts (plain SVG, no chart library).
@@ -113,7 +115,14 @@ Social media, YouTube and music are the main distractions. On the phone, **Kahf 
 - Starts on login.
 
 ### F10. Block page
-- Shown by the extension when a site is blocked. Content: big "Back to work." message, today's progress, current streak, and a button "Open my plan" (opens the app). No "unblock" button.
+- Shown by the extension when a site is blocked. Content: big "Back to work." message, today's focus progress, the top open tasks, current streak, and a button "Open my plan" (opens the app). No "unblock" button.
+
+### F11. XP, levels and badges
+- **XP:** 1 per minute of focus; 50 / 30 / 15 for finishing a high / medium / low priority task; 5 per subtask.
+- Task XP is capped at **200 a day**, because tasks are free to add. Focus XP has no cap. Unticking takes the XP back; removing a task keeps what it earned.
+- **Levels:** level N takes N × 100 XP to finish.
+- **Badges** (9): first session; 10 and 100 hours of focus; 3, 7, 30 and 90 day streaks; 10 and 100 tasks finished.
+- XP is never taken away for a slip. Everything is worked out from saved days, so there is nothing extra to store.
 
 ---
 
@@ -167,7 +176,7 @@ monk-mode-blocker/
 
 JSON, one message per frame: `{ "id": "uuid", "type": "...", "payload": {...} }` → reply `{ "id": "...", "ok": true, "data": {...} }` or `{ "id": "...", "ok": false, "error": { "code": "LOCKED_LOOSENING", "message": "..." } }`.
 
-Message types (v1): `get_state`, `update_settings`, `start_lock`, `start_pomodoro`, `stop_pomodoro`, `get_stats`, `ext_hello`, `ext_heartbeat`, `ext_active_tab` (url, focused, visible, incognito), `ext_blocked_attempt`, `state_changed` (server push).
+Message types (v1): `get_state`, `update_settings`, `update_tasks`, `start_lock`, `start_pomodoro`, `stop_pomodoro`, `get_stats`, `ext_hello`, `ext_heartbeat`, `ext_active_tab` (url, focused, visible, incognito), `ext_blocked_attempt`, `state_changed` (server push).
 
 Types are defined once in `crates/core` and exported to TypeScript with **`ts-rs`** into `app/src/types/` and `extension/src/types/` (generated, do not edit by hand).
 
@@ -175,60 +184,60 @@ Types are defined once in `crates/core` and exported to TypeScript with **`ts-rs
 
 - `settings` (single row JSON blob, versioned)
 - `lock` (`ends_at`, `created_at`, `signature`)
-- `usage_daily` (`date`, `allowance_used_sec`, `blocked_attempts`)
+- `usage_daily` (`date`, `allowance_used_sec`, `blocked_attempts`, `focus_sec`, `site_used_sec`, `task_xp`, `tasks_done`)
 - `focus_sessions` (`id`, `block_name`, `started_at`, `ended_at`, `kind` = pomodoro|manual)
-- `meta` (`last_seen_time`, schema version)
+- `meta` (`last_seen_time`, `tasks` as JSON)
 
 ---
 
 ## 6. UI spec (keep it simple)
 
 - **Stack:** React 18 + TypeScript + Vite + **Tailwind CSS + DaisyUI** (DaisyUI is a component plugin on top of Tailwind; we only use its ready-made classes like `btn`, `card`, `stat`, `progress`, `toggle`, `modal`. **No custom CSS** beyond the Tailwind config).
-- Theme: two custom DaisyUI themes, `monk-light` and `monk-dark` (see **6.1 Design system**). Follows the Windows light/dark setting.
+- Theme: one custom DaisyUI theme, `monk-dark` (see **6.1 Design system**).
 - Icons: `lucide-react`. No other UI libraries.
-- Window: 900×640, resizable, min 720×520.
-- Navigation: left sidebar (DaisyUI `menu`) with 5 screens:
+- Window: 1100×760, resizable, min 720×520.
+- Navigation: left icon rail with tooltips, with these screens:
 
 | Screen | Contents |
 |---|---|
-| **Today** | Allowance left (big `stat`), 3 progress bars for study blocks, Start Pomodoro button, streak + "Day X of 90" |
-| **Block lists** | Tabs: Allowance sites · Always blocked. Each: list + add input + remove button (remove disabled with tooltip "Locked until …" when locked) |
-| **Schedule** | Daily allowance minutes, Pomodoro lengths, study blocks (name + hours), daily focus target |
-| **Stats** | 7/30 day bars, totals per study block, blocked attempts |
+| **Today** | Level and XP bar, focus bar (pick a task, start), a time-left ring per site, today's tasks with subtasks and priority, streak and focus progress |
+| **Limits** | Tabs: Daily limits (minutes per site) · Always blocked. Each: list + add input + remove button (remove disabled with tooltip "Locked until …" when locked). Shorts toggle |
+| **Rewards** | Level, XP to next level, badges, how to earn XP |
+| **Stats** | 7/30 day bars, focus per task, tasks finished, blocked attempts |
 | **Lock** | Status, or the 3-step lock wizard (choose duration → review rules → type phrase) |
+| **Settings** | Pomodoro lengths, daily focus target |
 
 - First-run **Setup wizard**: 1) welcome, 2) install/verify service (UAC prompt), 3) install extension (unpacked instructions + "Waiting for extension…" check), 4) confirm default lists, 5) optional: start 3-month lock.
 - All loosening controls must be **visibly disabled** when locked, not just rejected by the service.
 
-### 6.1 Design system: warm, calm, minimal
+### 6.1 Design system: dark focus dashboard
 
-**Feel:** a quiet study room. Warm paper background, one muted orange accent, lots of whitespace, slow and soft motion. It is inspired by the calm style of modern AI chat apps, but **everything is original**: do not copy any company's logo, wordmark, icon or exact brand colors.
+**Feel:** a dark, high-contrast dashboard with one bright accent, saffron, the colour of monks' robes. Glow is kept for what's live: the rings, the running timer, the current level.
 
 **Colors** (DaisyUI theme tokens)
 
-| Token | `monk-light` | `monk-dark` | Use |
-|---|---|---|---|
-| `base-100` | `#FAF8F3` | `#1F1E1B` | App background |
-| `base-200` | `#F2EEE6` | `#2A2925` | Sidebar, cards |
-| `base-300` | `#E6E0D4` | `#3A3833` | Borders, dividers |
-| `base-content` | `#2B2A27` | `#ECE8DF` | Main text |
-| `primary` | `#C8643B` | `#D97A52` | Buttons, active nav, progress, logo |
-| `primary-content` | `#FFFFFF` | `#1F1E1B` | Text on primary |
-| `secondary` | `#7A8B6F` | `#93A487` | Study-block progress (sage green) |
-| `neutral` | `#6B675E` | `#A39E93` | Muted text, icons |
-| `success` / `warning` / `error` | `#5E8C61` / `#D9A441` / `#B5473A` | `#78A57B` / `#E2B65C` / `#CF6456` | Status |
+| Token | `monk-dark` | Use |
+|---|---|---|
+| `base-100` | `#0C0E14` | App background |
+| `base-200` | `#14171F` | Rail, cards |
+| `base-300` | `#272B37` | Borders, dividers |
+| `base-content` | `#EEF0F6` | Main text |
+| `primary` | `#FFB224` | Buttons, active nav, progress, logo |
+| `primary-content` | `#1B1203` | Text on primary |
+| `neutral` | `#9CA3B5` | Muted text, icons |
+| `success` / `error` | `#4ADE9B` / `#FF6B5E` | Status, high priority, a ring in its last 2 minutes |
 
-Text/background pairs used for body text must pass WCAG AA (4.5:1); a unit test checks them.
+Text/background pairs must pass WCAG AA (4.5:1); a unit test checks them.
 
 **Typography**
-- Headings and big numbers (allowance timer, streak): **Source Serif 4**, weight 500–600.
-- Body/UI: **Inter**, 14–15 px, line-height 1.6.
+- Headings and big numbers: **Bricolage Grotesque**, weight 600–700.
+- Body/UI: **Inter**, 14 px, line-height 1.55.
 - Fonts bundled locally with `@fontsource` (no CDN).
 
 **Shape & spacing**
-- Radius: box `1rem`, button `0.75rem`, badge `1.5rem`.
-- Cards: `base-200` background, 1px `base-300` border, `shadow-sm` max.
-- Generous padding (`p-6` cards, `gap-6` layout). Max content width 760 px, centered.
+- Radius: box `0.875rem`, button `0.625rem`, badge `1.5rem`.
+- Cards: `base-200` background, 1px `base-300` border, no shadow.
+- `p-5` cards, `gap-5` layout. Max content width 1080 px, centered.
 
 **Logo (original)**
 - Mark: a simple **hourglass inside a circle**, line style, 2 strokes in `primary`, a small dot of "sand" at the bottom. No gradients.
@@ -237,13 +246,11 @@ Text/background pairs used for body text must pass WCAG AA (4.5:1); a unit test 
 
 **Motion** (CSS keyframes in Tailwind config; no animation library)
 - `breathe`: scale 1 → 1.04 → 1 and opacity 0.85 → 1, **4 s**, ease-in-out, infinite. On the logo while a Pomodoro runs, and on the block page.
-- `fade-up`: screens and cards fade in and move 6 px up, **250 ms**, ease-out, 40 ms stagger for lists.
-- Progress bars animate width changes over **600 ms**.
-- Allowance countdown: digits cross-fade (150 ms) instead of jumping.
-- Buttons: 150 ms color transition only.
+- `xp-pop`: "+50 XP" rises and fades over **1.5 s** when a task or subtask is finished.
+- Rings animate over **500 ms**, progress bars over **600 ms**.
 - `prefers-reduced-motion`: all animations off.
 
-**Voice (UI text):** short, warm, calm. Examples: "Back to work." · "8 minutes left for today." · "Day 12 of 90. Keep going." No exclamation marks, no guilt-tripping.
+**Voice (UI text):** short and plain. Examples: "Back to work." · "Day 12 of 90. Keep going." No exclamation marks, no guilt-tripping.
 
 ---
 
@@ -252,7 +259,7 @@ Text/background pairs used for body text must pass WCAG AA (4.5:1); a unit test 
 | Area | Choice |
 |---|---|
 | Desktop shell | **Tauri 2.x** (`tauri-plugin-notification`, `tauri-plugin-autostart`, `tauri-plugin-single-instance`) |
-| Frontend | React 18, TypeScript 5, Vite 5, Tailwind 3 + **DaisyUI 4**, lucide-react, Zustand, React Router, `@fontsource/source-serif-4`, `@fontsource/inter` |
+| Frontend | React 18, TypeScript 5, Vite 5, Tailwind 3 + **DaisyUI 4**, lucide-react, Zustand, React Router, `@fontsource/bricolage-grotesque`, `@fontsource/inter` |
 | Rust | edition 2021, `tokio`, `serde`, `rusqlite` (bundled), `tokio-tungstenite`, `windows-service`, `windows` crate (registry, named pipes, user-session launch), `sysinfo` (browser detection only), `chrono`, `ts-rs`, `thiserror`, `tracing` |
 | Extension | TypeScript, Manifest V3, Vite build, `chrome.declarativeNetRequest`, service worker + content script |
 | Tests | Rust: `cargo test`; Frontend + extension: Vitest + Testing Library |
@@ -264,14 +271,14 @@ Text/background pairs used for body text must pass WCAG AA (4.5:1); a unit test 
 
 ## 8. Success criteria (v1)
 
-- With allowance = 10 min, watching YouTube in the active tab for 10 min blocks youtube.com in Chrome, Edge **and** any other app within **5 s**, until midnight.
+- With YouTube's limit = 30 min, watching YouTube in the active tab for 30 min blocks youtube.com in Chrome, Edge **and** any other app within **5 s**, until midnight, while other sites with time left stay open.
 - Background YouTube tabs do not use up allowance.
 - `tiktok.com` is blocked at all times, from the first minute after install.
 - `youtube.com/shorts/...` is blocked at all times; a normal `youtube.com/watch` video plays while allowance is left.
 - During a Pomodoro, allowance sites are blocked even with allowance left.
 - Desktop apps (Spotify, Discord, etc.) are **not** blocked or killed.
 - Manually editing the hosts file to remove entries is reverted within 5 s.
-- While locked: removing a site, raising allowance, stopping the service and uninstalling all fail with a clear message.
+- While locked: removing a site, raising a site's limit, stopping the service and uninstalling all fail with a clear message.
 - Turning the clock back 1 month does not end a 3-month lock early.
 - Killing the tray app → it's back within 10 s.
 - Idle CPU < 1%, RAM (service + UI) < 120 MB.
@@ -341,7 +348,7 @@ Text/background pairs used for body text must pass WCAG AA (4.5:1); a unit test 
 - [x] **T4.8** `ext_blocked_attempt` reporting. *Acceptance:* blocked-attempt count increases in db.
 
 ### Phase 5 — Tauri app (`app/`)
-- [x] **T5.1** Rust commands: named-pipe client exposing `get_state`, `update_settings`, `start_lock`, `start_pomodoro`, `stop_pomodoro`, `get_stats`; forward `state_changed` as a Tauri event. *Acceptance:* invoke from React returns state.
+- [x] **T5.1** Rust commands: named-pipe client exposing `get_state`, `update_settings`, `update_tasks`, `start_lock`, `start_pomodoro`, `stop_pomodoro`, `get_stats`; forward `state_changed` as a Tauri event. *Acceptance:* invoke from React returns state.
 - [x] **T5.2** Zustand store + `useServiceState` hook; "Service not running" banner. *Acceptance:* Vitest for store.
 - [x] **T5.3** Layout: sidebar `menu` with logo + 5 routes (Section 6), `fade-up` on route change. *Acceptance:* navigation works.
 - [x] **T5.4** Today screen (F1, F7, F8 summary). *Acceptance:* Testing Library test with mock state.
@@ -377,6 +384,16 @@ Text/background pairs used for body text must pass WCAG AA (4.5:1); a unit test 
 - [x] **T7.4** Measure idle CPU/RAM. *Acceptance:* within Section 8 limits.
   > NOTE: Measured with release builds, idle in the tray: 0.05% CPU and 26 MB working set (service + UI), against limits of 1% and 120 MB. Closing the window destroys it to free WebView2. With the window open, WebView2 brings it to about 150 MB private memory (376 MB working set, which double-counts shared pages), over the limit. That is active use rather than idle, so this is recorded here and not as a failure.
 - [x] **T7.5** README: what it is, install, extension setup, how the lock works, limitations, screenshots.
+
+### Phase 8 — Per-site limits, tasks, XP and new look (owner request)
+- [x] **T8.1** Per-site daily limits replace the shared allowance (F1). Settings version 2; version 1 settings convert with each site on the old shared number, so an upgrade can't loosen a lock. Lock rules apply per site, and duplicates are refused. *Acceptance:* unit tests for each site running out alone, subdomains, raising a limit while locked, and conversion.
+- [x] **T8.2** Today's tasks with priority and subtasks replace study blocks (F7), via `update_tasks`. Pomodoro runs on a task or none. *Acceptance:* tests for adding, finishing, carrying over, and restart.
+- [x] **T8.3** XP, levels and badges (F11), plus a Rewards screen and level-up notification. *Acceptance:* tests for XP amounts, the daily cap, unticking, levels and badges.
+- [x] **T8.4** Dark dashboard redesign (6, 6.1) of the app and block page, with new icons. *Acceptance:* contrast test passes; every screen checked by screenshot at 1100×760 and 720×520.
+  > NOTE: Screenshots used a fake service, so the look is verified, and T8.5 covers the real thing.
+- [x] **T8.6** The installer refuses to upgrade during a lock, before changing any file. *Acceptance:* run on the owner's PC during a lock: exit code 2, and no installed file changes.
+  > NOTE: An earlier build reported success but replaced only the app and extension, because the locked service couldn't stop. That left a new app on the old service. It was repaired on the owner's PC, at their request, by swapping the service file by hand during their lock. The lock and rules carried over unchanged.
+- [ ] **T8.5** Check on the owner's PC with the real service: YouTube 30 min and Facebook, Instagram and Messenger 10 min each count separately; a task with subtasks earns XP and survives a restart. *Acceptance:* `docs/manual-tests.md` N1-N3.
 
 ---
 

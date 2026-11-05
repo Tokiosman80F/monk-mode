@@ -206,8 +206,8 @@ mod tests {
         assert_eq!(reply["id"], "7");
         assert_eq!(reply["ok"], true);
         assert_eq!(
-            reply["data"]["state"]["settings"]["daily_allowance_min"],
-            10
+            reply["data"]["state"]["settings"]["allowance_sites"][0]["daily_min"],
+            30
         );
     }
 
@@ -220,10 +220,8 @@ mod tests {
         send(&mut rig, &start.to_string()).await;
         assert_eq!(recv(&mut rig).await["ok"], true);
 
-        let settings = monk_core::models::Settings {
-            daily_allowance_min: 60,
-            ..Default::default()
-        };
+        let mut settings = monk_core::models::Settings::default();
+        settings.allowance_sites[0].daily_min = 60;
         let update = json!({ "id": "2", "type": "update_settings", "payload": settings });
         send(&mut rig, &update.to_string()).await;
         let reply = recv(&mut rig).await;

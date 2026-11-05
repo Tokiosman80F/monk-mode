@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use chrono::{DateTime, Utc};
-use monk_core::models::Settings;
+use monk_core::models::{Settings, Task};
 use monk_core::protocol::{ErrorCode, Message, ReplyError};
 use pipe::Pipe;
 use serde_json::Value;
@@ -35,8 +35,13 @@ async fn start_lock(pipe: State<'_, Pipe>, ends_at: DateTime<Utc>) -> CommandRes
 }
 
 #[tauri::command]
-async fn start_pomodoro(pipe: State<'_, Pipe>, block_name: String) -> CommandResult {
-    pipe.call(Message::StartPomodoro { block_name }).await
+async fn update_tasks(pipe: State<'_, Pipe>, tasks: Vec<Task>) -> CommandResult {
+    pipe.call(Message::UpdateTasks(tasks)).await
+}
+
+#[tauri::command]
+async fn start_pomodoro(pipe: State<'_, Pipe>, task_id: Option<u32>) -> CommandResult {
+    pipe.call(Message::StartPomodoro { task_id }).await
 }
 
 #[tauri::command]
@@ -117,6 +122,7 @@ fn main() {
             get_state,
             update_settings,
             start_lock,
+            update_tasks,
             start_pomodoro,
             stop_pomodoro,
             get_stats,

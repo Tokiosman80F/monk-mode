@@ -46,12 +46,10 @@ pub fn show_window(app: &AppHandle) {
 
 async fn start_pomodoro(app: AppHandle) {
     let pipe = app.state::<Pipe>();
-    let block = pipe
+    let task_id = pipe
         .last_snapshot()
-        .and_then(|snapshot| notify::next_block(&snapshot.state));
-    if let Some(block_name) = block {
-        let _ = pipe.call(Message::StartPomodoro { block_name }).await;
-    }
+        .and_then(|snapshot| notify::next_task(&snapshot.state));
+    let _ = pipe.call(Message::StartPomodoro { task_id }).await;
     show_window(&app);
 }
 

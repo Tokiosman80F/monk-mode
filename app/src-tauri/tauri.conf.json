@@ -14,8 +14,8 @@
     "windows": [
       {
         "title": "Monk Mode",
-        "width": 900,
-        "height": 640,
+        "width": 1100,
+        "height": 760,
         "minWidth": 720,
         "minHeight": 520,
         "visible": false,

@@ -1,4 +1,7 @@
 import type { LockDay } from "./types/LockDay";
+import type { Task } from "./types/Task";
+
+const PRIORITY_ORDER = ["high", "medium", "low"];
 
 /** Where the background worker keeps the latest service state for the block page. */
 export const STATE_KEY = "serviceState";
@@ -20,4 +23,15 @@ export function streakText(
   const streak = `Streak: ${streakDays} ${streakDays === 1 ? "day" : "days"}.`;
   if (!lockDay) return streak;
   return `Day ${lockDay.day} of ${lockDay.total}. ${streak}`;
+}
+
+/** What the block page points back to: the most important open tasks. */
+export function topTasks(tasks: Task[], count: number): Task[] {
+  return tasks
+    .filter((task) => !task.done)
+    .sort(
+      (a, b) =>
+        PRIORITY_ORDER.indexOf(a.priority) - PRIORITY_ORDER.indexOf(b.priority),
+    )
+    .slice(0, count);
 }

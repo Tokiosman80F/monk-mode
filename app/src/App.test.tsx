@@ -38,7 +38,14 @@ describe("App", () => {
       screen.getByRole("heading", { level: 1, name: "Today" }),
     ).toBeInTheDocument();
 
-    for (const name of ["Block lists", "Schedule", "Stats", "Lock", "About"]) {
+    for (const name of [
+      "Limits",
+      "Rewards",
+      "Stats",
+      "Lock",
+      "Settings",
+      "About",
+    ]) {
       await act(async () => {
         fireEvent.click(screen.getByRole("link", { name }));
       });
@@ -97,7 +104,7 @@ describe("App", () => {
       setStore(({ state }) => {
         state.pomodoro = {
           phase: "focus",
-          block_name: "React",
+          task_title: "React",
           started_at: "2026-11-05T09:00:00Z",
           remaining_sec: 60,
         };

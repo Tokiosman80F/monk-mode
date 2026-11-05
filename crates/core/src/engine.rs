@@ -4,11 +4,15 @@ use ts_rs::TS;
 
 use crate::domain::{expand_subdomains, url_matches_domain};
 use crate::lock::lock_day;
-use crate::models::{FocusKind, FocusSession, Now, PomodoroState, State, UsageDay};
+use crate::models::{AllowanceSite, FocusKind, FocusSession, Now, PomodoroState, State, UsageDay};
+use crate::progress::progress;
 use crate::stats::streak;
+use crate::tasks::prune_tasks;
 
 const WARN_2MIN_SEC: u32 = 120;
 const WARN_30S_SEC: u32 = 30;
+/// A session started with no task picked, such as from the tray with an empty list.
+pub const FREE_FOCUS: &str = "Free focus";
 
 const SHORTS_PATTERNS: [&str; 5] = [
     "||youtube.com/shorts/",
@@ -52,8 +56,8 @@ pub struct BlockedSet {
 pub enum PomodoroError {
     #[error("A session is already running.")]
     AlreadyRunning,
-    #[error("There is no study block called \"{0}\".")]
-    UnknownBlock(String),
+    #[error("That task no longer exists.")]
+    UnknownTask,
 }
 
 /// Advances the state by `elapsed_sec`. Call once per service loop.
@@ -72,6 +76,11 @@ pub fn tick(
         &state.today,
         state.settings.daily_focus_target_min,
     );
+    state.progress = progress(
+        &state.history,
+        &state.today,
+        state.settings.daily_focus_target_min,
+    );
     state.lock_day = state.lock.as_ref().and_then(|l| lock_day(l, now.utc));
     events
 }
@@ -81,6 +90,7 @@ fn roll_over(state: &mut State, now: Now, events: &mut Vec<Event>) {
     if now.local_date > state.today.date {
         let finished = std::mem::replace(&mut state.today, UsageDay::new(now.local_date));
         state.history.push(finished.clone());
+        prune_tasks(&mut state.tasks, now.local_date);
         events.push(Event::DayRolled(finished));
     }
 }
@@ -89,10 +99,8 @@ fn is_focusing(state: &State) -> bool {
     matches!(state.pomodoro, PomodoroState::Focus { .. })
 }
 
-fn allowance_sec(state: &State) -> u32 {
-    state.settings.daily_allowance_min * 60
-}
-
+/// A tab counts towards every limit it matches, so adding `m.example.com` with a bigger limit
+/// can't get around the limit on `example.com`.
 fn tick_allowance(
     state: &mut State,
     elapsed_sec: u32,
@@ -100,53 +108,63 @@ fn tick_allowance(
     events: &mut Vec<Event>,
 ) {
     let Some(tab) = tab else { return };
-    let counts = tab.focused
-        && tab.visible
-        && !tab.idle
-        && !is_focusing(state)
-        && state
-            .settings
-            .allowance_sites
-            .iter()
-            .any(|d| url_matches_domain(&tab.url, d));
-    if !counts {
+    if !tab.focused || !tab.visible || tab.idle || is_focusing(state) {
         return;
     }
 
-    let limit = allowance_sec(state);
-    let before = limit.saturating_sub(state.today.allowance_used_sec);
-    if before == 0 {
-        return;
-    }
-    let used = elapsed_sec.min(before);
-    state.today.allowance_used_sec += used;
-    let after = before - used;
+    let mut counted = 0;
+    for site in &state.settings.allowance_sites {
+        if !url_matches_domain(&tab.url, &site.domain) {
+            continue;
+        }
+        let used = state
+            .today
+            .site_used_sec
+            .entry(site.domain.clone())
+            .or_default();
+        let before = (site.daily_min * 60).saturating_sub(*used);
+        if before == 0 {
+            continue;
+        }
+        let added = elapsed_sec.min(before);
+        *used += added;
+        counted = counted.max(added);
+        let after = before - added;
 
-    if before > WARN_2MIN_SEC && after <= WARN_2MIN_SEC {
-        events.push(Event::Warn2Min);
+        if before > WARN_2MIN_SEC && after <= WARN_2MIN_SEC {
+            events.push(Event::Warn2Min);
+        }
+        if before > WARN_30S_SEC && after <= WARN_30S_SEC {
+            events.push(Event::Warn30s);
+        }
+        if after == 0 {
+            events.push(Event::AllowanceUsedUp);
+        }
     }
-    if before > WARN_30S_SEC && after <= WARN_30S_SEC {
-        events.push(Event::Warn30s);
-    }
-    if after == 0 {
-        events.push(Event::AllowanceUsedUp);
-    }
+    state.today.allowance_used_sec += counted;
 }
 
-pub fn start_pomodoro(state: &mut State, block_name: &str, now: Now) -> Result<(), PomodoroError> {
+/// `task_id` of `None` starts a session with no task.
+pub fn start_pomodoro(
+    state: &mut State,
+    task_id: Option<u32>,
+    now: Now,
+) -> Result<(), PomodoroError> {
     if state.pomodoro != PomodoroState::Idle {
         return Err(PomodoroError::AlreadyRunning);
     }
-    if !state
-        .settings
-        .study_blocks
-        .iter()
-        .any(|b| b.name == block_name)
-    {
-        return Err(PomodoroError::UnknownBlock(block_name.to_string()));
-    }
+    let task_title = match task_id {
+        Some(id) => state
+            .tasks
+            .iter()
+            .find(|t| t.id == id)
+            .ok_or(PomodoroError::UnknownTask)?
+            .title
+            .clone(),
+        None => FREE_FOCUS.to_string(),
+    };
     state.pomodoro = PomodoroState::Focus {
-        block_name: block_name.to_string(),
+        task_title,
         started_at: now.utc,
         remaining_sec: state.settings.pomodoro_focus_min * 60,
     };
@@ -157,12 +175,12 @@ pub fn start_pomodoro(state: &mut State, block_name: &str, now: Now) -> Result<(
 pub fn stop_pomodoro(state: &mut State, now: Now) -> Option<FocusSession> {
     match std::mem::replace(&mut state.pomodoro, PomodoroState::Idle) {
         PomodoroState::Focus {
-            block_name,
+            task_title,
             started_at,
             ..
         } => Some(FocusSession {
             id: None,
-            block_name,
+            task_title,
             started_at,
             ended_at: now.utc,
             kind: FocusKind::Pomodoro,
@@ -176,13 +194,13 @@ fn tick_pomodoro(state: &mut State, elapsed_sec: u32, now: Now, events: &mut Vec
     match &mut state.pomodoro {
         PomodoroState::Idle => {}
         PomodoroState::Focus {
-            block_name,
+            task_title,
             remaining_sec,
             ..
         } => {
             let counted = elapsed_sec.min(*remaining_sec);
             *remaining_sec -= counted;
-            *state.today.focus_sec.entry(block_name.clone()).or_default() += counted;
+            *state.today.focus_sec.entry(task_title.clone()).or_default() += counted;
             if *remaining_sec == 0 {
                 if let Some(session) = stop_pomodoro(state, now) {
                     events.push(Event::FocusEnded(session));
@@ -208,18 +226,31 @@ fn tick_pomodoro(state: &mut State, elapsed_sec: u32, now: Now, events: &mut Vec
 /// browser has been running without the extension for too long (F4).
 pub fn compute_blocked(state: &State, now: Now, extension_connected: bool) -> BlockedSet {
     // A stored day that's already over has no bearing on today's allowance.
-    let used = if state.today.date == now.local_date {
-        state.today.allowance_used_sec
-    } else {
-        0
+    let is_today = state.today.date == now.local_date;
+    let used_up = |site: &AllowanceSite| {
+        let used = if is_today {
+            state.today.site_used(&site.domain)
+        } else {
+            0
+        };
+        used >= site.daily_min * 60
     };
-    let block_allowance_sites =
-        used >= allowance_sec(state) || is_focusing(state) || !extension_connected;
+    let block_all = is_focusing(state) || !extension_connected;
+    let allowance = &state.settings.allowance_sites;
 
     let mut sites: Vec<&String> = state.settings.always_blocked.iter().collect();
-    if block_allowance_sites {
-        sites.extend(&state.settings.allowance_sites);
-    }
+    sites.extend(
+        allowance
+            .iter()
+            // A site closes with its own limit, or with the limit of a site it's part of.
+            .filter(|site| {
+                block_all
+                    || allowance.iter().any(|parent| {
+                        used_up(parent) && url_matches_domain(&site.domain, &parent.domain)
+                    })
+            })
+            .map(|site| &site.domain),
+    );
 
     let mut hosts_domains: Vec<String> = sites.iter().flat_map(|d| expand_subdomains(d)).collect();
     hosts_domains.sort();
@@ -254,8 +285,30 @@ mod tests {
         at(2026, 11, 5, 12)
     }
 
+    /// Every site on a 10-minute limit.
     fn state() -> State {
-        State::new(now().local_date)
+        let mut s = State::new(now().local_date);
+        set_limits(&mut s, 10);
+        s
+    }
+
+    fn set_limits(s: &mut State, minutes: u32) {
+        for site in &mut s.settings.allowance_sites {
+            site.daily_min = minutes;
+        }
+    }
+
+    fn with_task(s: &mut State, title: &str) -> Option<u32> {
+        let id = s.tasks.len() as u32 + 1;
+        s.tasks.push(crate::models::Task {
+            id,
+            title: title.to_string(),
+            priority: crate::models::Priority::Medium,
+            done: false,
+            done_on: None,
+            subtasks: vec![],
+        });
+        Some(id)
     }
 
     fn tab(url: &str) -> ActiveTab {
@@ -328,7 +381,7 @@ mod tests {
     #[test]
     fn nothing_counts_during_a_focus_session_but_breaks_do() {
         let mut s = state();
-        start_pomodoro(&mut s, "React", now()).unwrap();
+        start_pomodoro(&mut s, None, now()).unwrap();
         tick(&mut s, 5, now(), Some(&youtube()));
         assert_eq!(s.today.allowance_used_sec, 0);
 
@@ -410,13 +463,14 @@ mod tests {
     #[test]
     fn full_cycle_counts_focus_to_the_chosen_block() {
         let mut s = state();
-        start_pomodoro(&mut s, "React", now()).unwrap();
+        let task = with_task(&mut s, "React");
+        start_pomodoro(&mut s, task, now()).unwrap();
 
         tick(&mut s, 50 * 60 - 1, now(), None);
         assert!(matches!(s.pomodoro, PomodoroState::Focus { .. }));
 
         let events = tick(&mut s, 1, now(), None);
-        assert!(matches!(&events[..], [Event::FocusEnded(f)] if f.block_name == "React"));
+        assert!(matches!(&events[..], [Event::FocusEnded(f)] if f.task_title == "React"));
         assert_eq!(
             s.pomodoro,
             PomodoroState::Break {
@@ -433,7 +487,8 @@ mod tests {
     fn zero_length_break_goes_straight_to_idle() {
         let mut s = state();
         s.settings.pomodoro_break_min = 0;
-        start_pomodoro(&mut s, "React", now()).unwrap();
+        let task = with_task(&mut s, "React");
+        start_pomodoro(&mut s, task, now()).unwrap();
         tick(&mut s, 50 * 60, now(), None);
         assert_eq!(s.pomodoro, PomodoroState::Idle);
     }
@@ -441,10 +496,11 @@ mod tests {
     #[test]
     fn stopping_early_keeps_time_already_counted() {
         let mut s = state();
-        start_pomodoro(&mut s, "Building", now()).unwrap();
+        let task = with_task(&mut s, "Building");
+        start_pomodoro(&mut s, task, now()).unwrap();
         tick(&mut s, 300, now(), None);
         let session = stop_pomodoro(&mut s, now()).unwrap();
-        assert_eq!(session.block_name, "Building");
+        assert_eq!(session.task_title, "Building");
         assert_eq!(s.pomodoro, PomodoroState::Idle);
         assert_eq!(s.today.focus_sec["Building"], 300);
         assert_eq!(stop_pomodoro(&mut s, now()), None);
@@ -453,7 +509,8 @@ mod tests {
     #[test]
     fn focus_cannot_overcount_past_the_session_length() {
         let mut s = state();
-        start_pomodoro(&mut s, "React", now()).unwrap();
+        let task = with_task(&mut s, "React");
+        start_pomodoro(&mut s, task, now()).unwrap();
         tick(&mut s, 100_000, now(), None);
         assert_eq!(s.today.focus_sec["React"], 50 * 60);
     }
@@ -461,7 +518,8 @@ mod tests {
     #[test]
     fn rollover_during_a_session_splits_focus_across_days() {
         let mut s = state();
-        start_pomodoro(&mut s, "React", now()).unwrap();
+        let task = with_task(&mut s, "React");
+        start_pomodoro(&mut s, task, now()).unwrap();
         tick(&mut s, 60, now(), None);
         tick(&mut s, 60, at(2026, 11, 6, 0), None);
         assert_eq!(s.history[0].focus_sec["React"], 60);
@@ -470,17 +528,96 @@ mod tests {
     }
 
     #[test]
-    fn start_rejects_a_second_session_and_unknown_blocks() {
+    fn start_rejects_a_second_session_and_unknown_tasks() {
         let mut s = state();
         assert_eq!(
-            start_pomodoro(&mut s, "Nope", now()),
-            Err(PomodoroError::UnknownBlock("Nope".to_string()))
+            start_pomodoro(&mut s, Some(99), now()),
+            Err(PomodoroError::UnknownTask)
         );
-        start_pomodoro(&mut s, "React", now()).unwrap();
+        let task = with_task(&mut s, "React");
+        start_pomodoro(&mut s, task, now()).unwrap();
         assert_eq!(
-            start_pomodoro(&mut s, "React", now()),
+            start_pomodoro(&mut s, task, now()),
             Err(PomodoroError::AlreadyRunning)
         );
+    }
+
+    #[test]
+    fn a_session_can_start_with_no_task() {
+        let mut s = state();
+        start_pomodoro(&mut s, None, now()).unwrap();
+        tick(&mut s, 60, now(), None);
+        assert_eq!(s.today.focus_sec[FREE_FOCUS], 60);
+    }
+
+    #[test]
+    fn a_new_day_clears_finished_tasks_only() {
+        let mut s = state();
+        with_task(&mut s, "Open");
+        with_task(&mut s, "Finished");
+        s.tasks[1].done = true;
+        s.tasks[1].done_on = Some(now().local_date);
+        tick(&mut s, 1, at(2026, 11, 6, 0), None);
+        assert_eq!(s.tasks.len(), 1);
+        assert_eq!(s.tasks[0].title, "Open");
+    }
+
+    // Per-site limits
+
+    fn set_limit(s: &mut State, domain: &str, minutes: u32) {
+        let site = s
+            .settings
+            .allowance_sites
+            .iter_mut()
+            .find(|site| site.domain == domain)
+            .unwrap();
+        site.daily_min = minutes;
+    }
+
+    #[test]
+    fn each_site_runs_out_on_its_own() {
+        let mut s = state();
+        set_limit(&mut s, "youtube.com", 30);
+        let instagram = tab("https://www.instagram.com/");
+        tick(&mut s, 600, now(), Some(&instagram));
+        assert_eq!(s.today.site_used("instagram.com"), 600);
+        assert_eq!(s.today.site_used("youtube.com"), 0);
+
+        let set = compute_blocked(&s, now(), true);
+        assert!(has(&set, "instagram.com"));
+        assert!(!has(&set, "youtube.com"));
+        assert!(!has(&set, "facebook.com"));
+
+        tick(&mut s, 1799, now(), Some(&youtube()));
+        assert!(!has(&compute_blocked(&s, now(), true), "youtube.com"));
+        tick(&mut s, 1, now(), Some(&youtube()));
+        assert!(has(&compute_blocked(&s, now(), true), "youtube.com"));
+    }
+
+    #[test]
+    fn a_subdomain_counts_towards_its_parent_and_closes_with_it() {
+        let mut s = state();
+        set_limit(&mut s, "music.youtube.com", 60);
+        let music = tab("https://music.youtube.com/watch?v=1");
+        tick(&mut s, 600, now(), Some(&music));
+        assert_eq!(s.today.site_used("youtube.com"), 600);
+        assert_eq!(s.today.site_used("music.youtube.com"), 600);
+        // One tab, so the day total only counts it once.
+        assert_eq!(s.today.allowance_used_sec, 600);
+
+        let set = compute_blocked(&s, now(), true);
+        assert!(has(&set, "youtube.com"));
+        assert!(has(&set, "music.youtube.com"));
+    }
+
+    #[test]
+    fn a_parent_stays_open_when_only_its_subdomain_runs_out() {
+        let mut s = state();
+        set_limit(&mut s, "music.youtube.com", 1);
+        tick(&mut s, 60, now(), Some(&tab("https://music.youtube.com/")));
+        let set = compute_blocked(&s, now(), true);
+        assert!(has(&set, "music.youtube.com"));
+        assert!(!has(&set, "youtube.com"));
     }
 
     // Blocked set
@@ -518,21 +655,22 @@ mod tests {
         let set = compute_blocked(&s, now(), true);
         assert!(has(&set, "youtube.com"));
         assert!(has(&set, "m.youtube.com"));
-        assert!(has(&set, "open.spotify.com"));
+        assert!(!has(&set, "open.spotify.com"));
         assert!(set.url_patterns.iter().any(|p| p == "||youtube.com^"));
     }
 
     #[test]
     fn zero_allowance_blocks_from_the_start() {
         let mut s = state();
-        s.settings.daily_allowance_min = 0;
+        set_limits(&mut s, 0);
         assert!(has(&compute_blocked(&s, now(), true), "youtube.com"));
     }
 
     #[test]
     fn allowance_sites_block_during_focus_but_not_during_a_break() {
         let mut s = state();
-        start_pomodoro(&mut s, "React", now()).unwrap();
+        let task = with_task(&mut s, "React");
+        start_pomodoro(&mut s, task, now()).unwrap();
         assert!(has(&compute_blocked(&s, now(), true), "youtube.com"));
         s.pomodoro = PomodoroState::Break { remaining_sec: 60 };
         assert!(!has(&compute_blocked(&s, now(), true), "youtube.com"));
@@ -556,8 +694,11 @@ mod tests {
     #[test]
     fn hosts_list_has_no_duplicates_and_shorts_can_be_turned_off() {
         let mut s = state();
-        s.settings.allowance_sites.push("tiktok.com".to_string());
-        s.settings.daily_allowance_min = 0;
+        s.settings.allowance_sites.push(AllowanceSite {
+            domain: "tiktok.com".to_string(),
+            daily_min: 0,
+        });
+        set_limits(&mut s, 0);
         s.settings.shorts_blocker_enabled = false;
         let set = compute_blocked(&s, now(), true);
         let mut sorted = set.hosts_domains.clone();

@@ -8,7 +8,13 @@ export default {
     extend: {
       fontFamily: {
         sans: ["Inter", "sans-serif"],
-        serif: ['"Source Serif 4"', "serif"],
+        display: ['"Bricolage Grotesque"', "sans-serif"],
+      },
+      dropShadow: {
+        glow: "0 0 6px rgb(255 178 36 / 0.55)",
+      },
+      boxShadow: {
+        glow: "0 0 18px rgb(255 178 36 / 0.35)",
       },
       keyframes: {
         breathe: {
@@ -23,11 +29,18 @@ export default {
           from: { opacity: "0" },
           to: { opacity: "1" },
         },
+        "xp-pop": {
+          "0%": { transform: "translateY(4px)", opacity: "0" },
+          "20%": { transform: "translateY(0)", opacity: "1" },
+          "80%": { transform: "translateY(-2px)", opacity: "1" },
+          "100%": { transform: "translateY(-10px)", opacity: "0" },
+        },
       },
       animation: {
         breathe: "breathe 4s ease-in-out infinite",
         "fade-up": "fade-up 250ms ease-out both",
         "fade-in": "fade-in 150ms ease-out both",
+        "xp-pop": "xp-pop 1500ms ease-out both",
       },
     },
   },
@@ -35,7 +48,7 @@ export default {
     daisyui,
     plugin(({ addBase }) =>
       addBase({
-        body: { fontSize: "15px", lineHeight: "1.6" },
+        body: { fontSize: "14px", lineHeight: "1.55" },
         ".btn": { transitionDuration: "150ms" },
         ".progress::-webkit-progress-value": {
           transition: "inline-size 600ms ease-out, width 600ms ease-out",

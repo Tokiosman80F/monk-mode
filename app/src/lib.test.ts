@@ -1,15 +1,26 @@
 import { describe, expect, it } from "vitest";
 import {
   addMonths,
-  allowanceLeftSec,
-  allowanceText,
+  addSubtask,
+  addTask,
   browserName,
   cleanDomain,
   fillDays,
   formatClock,
   formatDuration,
+  formatLeft,
+  greeting,
   isLocked,
+  PRIORITY_INFO,
+  removeSubtask,
+  siteLeftSec,
+  sitesByUse,
+  sortTasks,
+  SUBTASK_XP,
+  toggleSubtask,
+  toggleTask,
 } from "./lib";
+import tasksRs from "../../crates/core/src/tasks.rs?raw";
 import { makeSnapshot } from "./test/fixtures";
 
 describe("formatDuration", () => {
@@ -29,21 +40,92 @@ describe("formatClock", () => {
   ])("%i is %s", (sec, text) => expect(formatClock(sec)).toBe(text));
 });
 
-describe("allowance", () => {
-  it("counts down and stops at zero", () => {
+describe("site limits", () => {
+  it("counts each site on its own and stops at zero", () => {
     const { state } = makeSnapshot();
-    expect(allowanceLeftSec(state)).toBe(480);
-    state.today.allowance_used_sec = 720;
-    expect(allowanceLeftSec(state)).toBe(0);
+    const [youtube, reddit] = state.settings.allowance_sites;
+    expect(siteLeftSec(state, youtube)).toBe(1680);
+    expect(siteLeftSec(state, reddit)).toBe(600);
+    state.today.site_used_sec["reddit.com"] = 720;
+    expect(siteLeftSec(state, reddit)).toBe(0);
+  });
+
+  it("puts the sites in use first", () => {
+    const { state } = makeSnapshot();
+    state.today.site_used_sec = { "reddit.com": 5 };
+    expect(sitesByUse(state)[0].domain).toBe("reddit.com");
   });
 
   it.each([
-    [0, "Nothing left for today."],
-    [45, "45 seconds left for today."],
-    [60, "1 minute left for today."],
-    [480, "8 minutes left for today."],
-  ])("%i reads as %s", (sec, text) => expect(allowanceText(sec)).toBe(text));
+    [0, "Closed"],
+    [45, "0:45"],
+    [60, "1m"],
+    [1680, "28m"],
+    [5400, "1h 30m"],
+  ])("%i reads as %s", (sec, text) => expect(formatLeft(sec)).toBe(text));
 });
+
+describe("tasks", () => {
+  const { tasks } = makeSnapshot().state;
+  const [plain, withSteps] = tasks;
+
+  it("adds with the next free ID", () => {
+    const added = addTask(tasks, "New", "low");
+    expect(added[2]).toMatchObject({ id: 3, title: "New", priority: "low" });
+    expect(addTask([], "First", "high")[0].id).toBe(1);
+  });
+
+  it("sorts open before done, then by priority, then by age", () => {
+    const low = addTask(tasks, "Low", "low");
+    const done = low.map((t) => (t.id === 2 ? { ...t, done: true } : t));
+    expect(sortTasks(low).map((t) => t.id)).toEqual([2, 1, 3]);
+    expect(sortTasks(done).map((t) => t.id)).toEqual([1, 3, 2]);
+  });
+
+  it("finishing a task finishes its subtasks, and undoing undoes them", () => {
+    const done = toggleTask(withSteps);
+    expect(done.done).toBe(true);
+    expect(done.subtasks.every((s) => s.done)).toBe(true);
+    const undone = toggleTask(done);
+    expect(undone.done).toBe(false);
+    expect(undone.subtasks.some((s) => s.done)).toBe(false);
+  });
+
+  it("a task with subtasks is done exactly when they all are", () => {
+    const finished = toggleSubtask(withSteps, 2);
+    expect(finished.done).toBe(true);
+    expect(toggleSubtask(finished, 1).done).toBe(false);
+  });
+
+  it("a new subtask reopens a finished task", () => {
+    const next = addSubtask(toggleTask(plain), "More");
+    expect(next.done).toBe(false);
+    expect(next.subtasks[0]).toEqual({ id: 1, title: "More", done: false });
+    expect(addSubtask(withSteps, "More").subtasks[2].id).toBe(3);
+  });
+
+  it("removing the last open subtask finishes the task", () => {
+    expect(removeSubtask(withSteps, 2).done).toBe(true);
+    expect(removeSubtask(removeSubtask(withSteps, 2), 1).subtasks).toEqual([]);
+  });
+
+  it("shows the same XP the service awards", () => {
+    for (const [name, value] of [
+      ["High", PRIORITY_INFO.high.xp],
+      ["Medium", PRIORITY_INFO.medium.xp],
+      ["Low", PRIORITY_INFO.low.xp],
+    ]) {
+      expect(tasksRs).toContain(`Priority::${name} => ${value}`);
+    }
+    expect(tasksRs).toContain(`SUBTASK_XP: u32 = ${SUBTASK_XP}`);
+  });
+});
+
+it.each([
+  [8, "Good morning"],
+  [13, "Good afternoon"],
+  [20, "Good evening"],
+])("at %i it says %s", (hour, text) => expect(greeting(hour)).toBe(text));
 
 describe("isLocked", () => {
   const lock = {
@@ -80,6 +162,9 @@ describe("fillDays", () => {
         allowance_used_sec: 0,
         blocked_attempts: 0,
         focus_sec: { React: 60, Building: 40 },
+        site_used_sec: {},
+        task_xp: 0,
+        tasks_done: 0,
       },
     ];
     expect(fillDays(days, 3, end)).toEqual([

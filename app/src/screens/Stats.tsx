@@ -50,7 +50,7 @@ function Bars({
               height={height}
               rx={3}
               className={
-                day.focusSec >= targetSec ? "fill-primary" : "fill-secondary"
+                day.focusSec >= targetSec ? "fill-primary" : "fill-neutral/40"
               }
             >
               <title>{`${day.date}: ${formatDuration(day.focusSec)}`}</title>
@@ -115,20 +115,26 @@ export default function StatsScreen() {
             />
             <p className="text-sm text-neutral">
               The dashed line is your daily target. Days that reach it show in
-              orange.
+              saffron.
             </p>
           </Card>
-          <Card title="Totals">
+          <Card title="Focus by task">
             <ul className="flex flex-col gap-1">
-              {Object.entries(stats.focus_totals_sec).map(([block, sec]) => (
-                <li key={block} className="flex justify-between">
-                  <span>{block}</span>
+              {Object.entries(stats.focus_totals_sec).map(([task, sec]) => (
+                <li key={task} className="flex justify-between">
+                  <span className="truncate">{task}</span>
                   <span className="text-neutral">
                     {formatDuration(sec ?? 0)}
                   </span>
                 </li>
               ))}
               <li className="flex justify-between border-t border-base-300 pt-2">
+                <span>Tasks finished</span>
+                <span className="text-neutral">
+                  {stats.days.reduce((sum, day) => sum + day.tasks_done, 0)}
+                </span>
+              </li>
+              <li className="flex justify-between">
                 <span>Blocked attempts</span>
                 <span className="text-neutral">{stats.blocked_attempts}</span>
               </li>

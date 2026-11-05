@@ -3,11 +3,14 @@
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, NaiveDate, Utc};
-use monk_core::models::{FocusKind, FocusSession, Lock, Settings, UsageDay};
+use monk_core::models::{FocusKind, FocusSession, Lock, Settings, Task, UsageDay};
 use rusqlite::{params, Connection, OptionalExtension};
 use thiserror::Error;
 
-const MIGRATIONS: [&str; 1] = [include_str!("../migrations/001_init.sql")];
+const MIGRATIONS: [&str; 2] = [
+    include_str!("../migrations/001_init.sql"),
+    include_str!("../migrations/002_tasks_and_limits.sql"),
+];
 
 #[derive(Debug, Error)]
 pub enum DbError {
@@ -52,7 +55,7 @@ impl Db {
             .conn
             .query_row("SELECT json FROM settings WHERE id = 1", [], |r| r.get(0))
             .optional()?;
-        Ok(json.map(|j| serde_json::from_str(&j)).transpose()?)
+        Ok(json.map(|j| Settings::from_stored(&j)).transpose()?)
     }
 
     pub fn save_settings(&self, settings: &Settings) -> Result<()> {
@@ -99,13 +102,17 @@ impl Db {
     pub fn save_day(&self, day: &UsageDay) -> Result<()> {
         self.conn.execute(
             "INSERT OR REPLACE INTO usage_daily
-                (date, allowance_used_sec, blocked_attempts, focus_sec)
-             VALUES (?1, ?2, ?3, ?4)",
+                (date, allowance_used_sec, blocked_attempts, focus_sec,
+                 site_used_sec, task_xp, tasks_done)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 day.date.to_string(),
                 day.allowance_used_sec,
                 day.blocked_attempts,
-                serde_json::to_string(&day.focus_sec)?
+                serde_json::to_string(&day.focus_sec)?,
+                serde_json::to_string(&day.site_used_sec)?,
+                day.task_xp,
+                day.tasks_done
             ],
         )?;
         Ok(())
@@ -114,7 +121,8 @@ impl Db {
     /// The most recent `limit` days, oldest first.
     pub fn load_days(&self, limit: u32) -> Result<Vec<UsageDay>> {
         let mut stmt = self.conn.prepare(
-            "SELECT date, allowance_used_sec, blocked_attempts, focus_sec
+            "SELECT date, allowance_used_sec, blocked_attempts, focus_sec,
+                    site_used_sec, task_xp, tasks_done
              FROM usage_daily ORDER BY date DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map([limit], |r| {
@@ -123,11 +131,22 @@ impl Db {
                 r.get::<_, u32>(1)?,
                 r.get::<_, u32>(2)?,
                 r.get::<_, String>(3)?,
+                r.get::<_, String>(4)?,
+                r.get::<_, u32>(5)?,
+                r.get::<_, u32>(6)?,
             ))
         })?;
         let mut days = Vec::new();
         for row in rows {
-            let (date, allowance_used_sec, blocked_attempts, focus_sec) = row?;
+            let (
+                date,
+                allowance_used_sec,
+                blocked_attempts,
+                focus_sec,
+                site_used_sec,
+                task_xp,
+                tasks_done,
+            ) = row?;
             days.push(UsageDay {
                 date: date
                     .parse::<NaiveDate>()
@@ -135,6 +154,9 @@ impl Db {
                 allowance_used_sec,
                 blocked_attempts,
                 focus_sec: serde_json::from_str(&focus_sec)?,
+                site_used_sec: serde_json::from_str(&site_used_sec)?,
+                task_xp,
+                tasks_done,
             });
         }
         days.reverse();
@@ -150,11 +172,32 @@ impl Db {
             "INSERT INTO focus_sessions (block_name, started_at, ended_at, kind)
              VALUES (?1, ?2, ?3, ?4)",
             params![
-                session.block_name,
+                session.task_title,
                 session.started_at.to_rfc3339(),
                 session.ended_at.to_rfc3339(),
                 kind
             ],
+        )?;
+        Ok(())
+    }
+
+    pub fn load_tasks(&self) -> Result<Vec<Task>> {
+        let json: Option<String> = self
+            .conn
+            .query_row("SELECT value FROM meta WHERE key = 'tasks'", [], |r| {
+                r.get(0)
+            })
+            .optional()?;
+        Ok(json
+            .map(|j| serde_json::from_str(&j))
+            .transpose()?
+            .unwrap_or_default())
+    }
+
+    pub fn save_tasks(&self, tasks: &[Task]) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('tasks', ?1)",
+            [serde_json::to_string(tasks)?],
         )?;
         Ok(())
     }
@@ -244,7 +287,7 @@ mod tests {
         let (_dir, db) = temp_db();
         assert_eq!(db.load_settings().unwrap(), None);
         let settings = Settings {
-            daily_allowance_min: 5,
+            pomodoro_focus_min: 5,
             ..Settings::default()
         };
         db.save_settings(&settings).unwrap();
@@ -274,6 +317,9 @@ mod tests {
         updated.allowance_used_sec = 60;
         updated.blocked_attempts = 2;
         updated.focus_sec.insert("React".to_string(), 120);
+        updated.site_used_sec.insert("youtube.com".to_string(), 90);
+        updated.task_xp = 50;
+        updated.tasks_done = 1;
         db.save_day(&updated).unwrap();
 
         let days = db.load_days(10).unwrap();
@@ -286,11 +332,58 @@ mod tests {
     }
 
     #[test]
+    fn a_version_1_database_upgrades_and_keeps_its_data() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let conn = Connection::open(dir.path().join("monk.db")).unwrap();
+            conn.execute_batch(MIGRATIONS[0]).unwrap();
+            conn.pragma_update(None, "user_version", 1).unwrap();
+            conn.execute(
+                "INSERT INTO settings (id, json) VALUES (1, ?1)",
+                [r#"{"version":1,"setup_done":true,"daily_allowance_min":10,
+                    "allowance_sites":["youtube.com"],"always_blocked":["tiktok.com"],
+                    "shorts_blocker_enabled":true,"study_blocks":[],"pomodoro_focus_min":50,
+                    "pomodoro_break_min":10,"daily_focus_target_min":660}"#],
+            )
+            .unwrap();
+            conn.execute(
+                r#"INSERT INTO usage_daily (date, allowance_used_sec, blocked_attempts, focus_sec)
+                   VALUES ('2026-11-01', 60, 2, '{"React":300}')"#,
+                [],
+            )
+            .unwrap();
+        }
+        let db = Db::open(dir.path()).unwrap();
+        let settings = db.load_settings().unwrap().unwrap();
+        assert_eq!(settings.allowance_sites[0].domain, "youtube.com");
+        assert_eq!(settings.allowance_sites[0].daily_min, 10);
+        let day = &db.load_days(1).unwrap()[0];
+        assert_eq!(day.focus_sec["React"], 300);
+        assert_eq!(day.task_xp, 0);
+    }
+
+    #[test]
+    fn tasks_round_trip() {
+        let (_dir, db) = temp_db();
+        assert!(db.load_tasks().unwrap().is_empty());
+        let task = Task {
+            id: 1,
+            title: "Ship".to_string(),
+            priority: monk_core::models::Priority::High,
+            done: false,
+            done_on: None,
+            subtasks: vec![],
+        };
+        db.save_tasks(std::slice::from_ref(&task)).unwrap();
+        assert_eq!(db.load_tasks().unwrap(), [task]);
+    }
+
+    #[test]
     fn focus_sessions_are_recorded() {
         let (_dir, db) = temp_db();
         db.insert_focus_session(&FocusSession {
             id: None,
-            block_name: "React".to_string(),
+            task_title: "React".to_string(),
             started_at: t(1),
             ended_at: t(1),
             kind: FocusKind::Pomodoro,

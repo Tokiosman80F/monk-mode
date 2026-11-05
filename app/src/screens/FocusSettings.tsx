@@ -1,11 +1,8 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { isLocked, lockedUntil } from "../lib";
 import { applyCall, useStore } from "../store";
 import type { Settings } from "../types/Settings";
 import { Card, ErrorNote, PageTitle } from "../ui";
-
-const MAX_ALLOWANCE_MIN = 60;
 
 function NumberField({
   label,
@@ -43,9 +40,8 @@ function NumberField({
   );
 }
 
-export default function Schedule() {
-  const snapshot = useStore((s) => s.snapshot);
-  const saved = snapshot?.state.settings;
+export default function FocusSettings() {
+  const saved = useStore((s) => s.snapshot?.state.settings);
   const [draft, setDraft] = useState<Settings | undefined>(saved);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -55,32 +51,20 @@ export default function Schedule() {
     if (saved && !draft) setDraft(saved);
   }, [saved, draft]);
 
-  if (!saved || !draft || !snapshot) return <PageTitle>Schedule</PageTitle>;
+  if (!saved || !draft) return <PageTitle>Settings</PageTitle>;
 
-  const { lock } = snapshot.state;
-  const locked = isLocked(lock);
-  const maxAllowance = locked ? saved.daily_allowance_min : MAX_ALLOWANCE_MIN;
   const update = (change: Partial<Settings>) => {
     setDone(false);
     setDraft({ ...draft, ...change });
   };
-  const updateBlock = (
-    index: number,
-    change: Partial<Settings["study_blocks"][number]>,
-  ) =>
-    update({
-      study_blocks: draft.study_blocks.map((block, i) =>
-        i === index ? { ...block, ...change } : block,
-      ),
-    });
 
   const save = async () => {
-    // Lists can change elsewhere while this screen is open, and they aren't edited here.
+    // Only these fields are edited here. The rest can change elsewhere while this is open.
     const next: Settings = {
-      ...draft,
-      allowance_sites: saved.allowance_sites,
-      always_blocked: saved.always_blocked,
-      shorts_blocker_enabled: saved.shorts_blocker_enabled,
+      ...saved,
+      pomodoro_focus_min: draft.pomodoro_focus_min,
+      pomodoro_break_min: draft.pomodoro_break_min,
+      daily_focus_target_min: draft.daily_focus_target_min,
     };
     const failure = await applyCall(api.updateSettings(next));
     setError(failure);
@@ -89,23 +73,9 @@ export default function Schedule() {
 
   return (
     <>
-      <PageTitle>Schedule</PageTitle>
+      <PageTitle>Settings</PageTitle>
 
-      <Card title="Daily allowance">
-        <NumberField
-          label="Minutes per day"
-          value={draft.daily_allowance_min}
-          max={maxAllowance}
-          hint={
-            locked
-              ? `${lockedUntil(lock)}. You can only lower this.`
-              : "From 0 to 60."
-          }
-          onChange={(value) => update({ daily_allowance_min: value })}
-        />
-      </Card>
-
-      <Card title="Pomodoro">
+      <Card title="Focus sessions">
         <div className="flex gap-6">
           <NumberField
             label="Focus minutes"
@@ -121,27 +91,7 @@ export default function Schedule() {
         </div>
       </Card>
 
-      <Card title="Study blocks">
-        {draft.study_blocks.map((block, i) => (
-          <div key={i} className="flex items-end gap-4">
-            <label className="form-control flex-1">
-              <span className="label-text mb-1">Name</span>
-              <input
-                className="input input-bordered w-full"
-                value={block.name}
-                onChange={(e) => updateBlock(i, { name: e.target.value })}
-              />
-            </label>
-            <NumberField
-              label="Hours"
-              value={block.target_min / 60}
-              step={0.5}
-              onChange={(hours) =>
-                updateBlock(i, { target_min: Math.round(hours * 60) })
-              }
-            />
-          </div>
-        ))}
+      <Card title="Daily goal">
         <NumberField
           label="Daily focus target (hours)"
           value={draft.daily_focus_target_min / 60}

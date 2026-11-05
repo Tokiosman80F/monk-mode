@@ -18,7 +18,7 @@ Record each result as pass or fail, with the date, under [Results](#results).
 
 | #   | Test                                                                        | Expected                                                                                                            |
 | --- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| B1  | With a 1-minute allowance, watch YouTube in the active tab                  | Blocked in Chrome and Edge within 5 s of it reaching 0, and in other apps too (`curl -I https://youtube.com` fails) |
+| B1  | With YouTube's limit at 1 minute, watch YouTube in the active tab           | Blocked in Chrome and Edge within 5 s of it reaching 0, and in other apps too (`curl -I https://youtube.com` fails) |
 | B2  | Leave YouTube playing in a background tab and work in another for 2 minutes | Allowance doesn't change                                                                                            |
 | B3  | Right after install, open `tiktok.com` in every browser                     | Blocked                                                                                                             |
 | B4  | Open `youtube.com/shorts/x` with allowance left                             | Block page                                                                                                          |
@@ -27,7 +27,7 @@ Record each result as pass or fail, with the date, under [Results](#results).
 | B7  | Check the YouTube home page                                                 | No Shorts shelf or sidebar link, no console errors, normal videos unaffected                                        |
 | B8  | Start a Pomodoro with allowance left, then open YouTube                     | Blocked until the focus session ends                                                                                |
 | B9  | Open the Spotify and Discord desktop apps                                   | Still running and not killed                                                                                        |
-| B10 | Close the extension in Edge while Edge is open, and wait 40 s               | Allowance sites blocked. Re-enabling lifts it within about 5 s                                                      |
+| B10 | Close the extension in Edge while Edge is open, and wait 40 s               | Sites with limits blocked. Re-enabling lifts it within about 5 s                                                    |
 | B11 | Leave a video playing with no mouse or keyboard input for 3 minutes         | Allowance keeps counting                                                                                            |
 | B12 | Open a blocked site's tab, then let the allowance hit 0                     | The open tab moves to the block page                                                                                |
 | B13 | Check the block page                                                        | Shows "Back to work.", today's progress and the streak, and "Open my plan" opens the app. There's no unblock button |
@@ -43,7 +43,7 @@ Record each result as pass or fail, with the date, under [Results](#results).
 | T4  | Choose **Quit** in the tray menu                                                                      | The app stays closed and the service keeps running. Starting it again works   |
 | T5  | While locked **(admin)**: `sc stop MonkModeService`                                                   | Fails with an error, and the service keeps running                            |
 | T6  | **(admin)** `taskkill /F /IM monk-service.exe`, then check again after 10 s                           | The service comes back and blocks resume                                      |
-| T7  | Locked: in the app, try to remove a site, raise the allowance and turn off the Shorts blocker         | Controls are disabled                                                         |
+| T7  | Locked: in the app, try to remove a site, raise a site's limit and turn off the Shorts blocker        | Controls are disabled                                                         |
 | T8  | Locked: run the uninstaller                                                                           | Refuses, showing the lock's end date                                          |
 | T9  | **(admin)** Locked: set the system clock back 1 month, then restart the service                       | Still locked, and the allowance isn't refilled. Set the clock back afterwards |
 | T10 | **(admin)** Locked: delete `HKLM\SOFTWARE\MonkMode`, then restart the service                         | Still locked, and the key is back                                             |
@@ -62,16 +62,16 @@ Hosts file blocks can be skipped when a browser uses DNS over HTTPS (PRD Section
 
 ## App
 
-| #   | Test                                                             | Expected                                                |
-| --- | ---------------------------------------------------------------- | ------------------------------------------------------- |
-| A1  | Check the tray menu                                              | Open, Start Pomodoro, remaining allowance text and Quit |
-| A2  | Sign out and back in                                             | The app starts in the tray                              |
-| A3  | Open the app twice                                               | One window. The second launch focuses it                |
-| A4  | Close the window                                                 | Stays in the tray                                       |
-| A5  | Let the allowance reach 2 min, 30 s and 0, and finish a Pomodoro | A notification for each                                 |
-| A6  | Change Windows between light and dark                            | The app follows                                         |
-| A7  | Turn on "reduce animations" in Windows                           | Animations stop                                         |
-| A8  | Run idle for 10 minutes and check Task Manager                   | CPU under 1%, service plus UI RAM under 120 MB          |
+| #   | Test                                                              | Expected                                       |
+| --- | ----------------------------------------------------------------- | ---------------------------------------------- |
+| A1  | Check the tray menu                                               | Open, Start Pomodoro, time-left text and Quit  |
+| A2  | Sign out and back in                                              | The app starts in the tray                     |
+| A3  | Open the app twice                                                | One window. The second launch focuses it       |
+| A4  | Close the window                                                  | Stays in the tray                              |
+| A5  | Let a site's limit reach 2 min, 30 s and 0, and finish a Pomodoro | A notification for each                        |
+| A6  | Change Windows between light and dark                             | The app follows                                |
+| A7  | Turn on "reduce animations" in Windows                            | Animations stop                                |
+| A8  | Run idle for 10 minutes and check Task Manager                    | CPU under 1%, service plus UI RAM under 120 MB |
 
 ## Results
 
@@ -84,3 +84,11 @@ Not yet run: B1-B14, D1-D2, T4, T7, T8 with the real `uninstall.exe`, T9, T11, T
 Earlier builds failed T5 (`sc stop` ended the service during a lock) and a reinstall (it broke the data folder's permissions). Both are fixed.
 
 **When testing T1 and T2, edit the file in an admin Notepad.** PowerShell's `Set-Content` left the real hosts file at 0 bytes here with no service involved, which wipes your own lines too. Keep a copy of the file first.
+
+## New in version 1.2
+
+| #   | Do this                                                                                  | Expected                                                                                 |
+| --- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| N1  | On Limits, set a site to 1 minute and use it until it closes. Then open a different site | Only the first site closes. Today shows its ring as Closed and the other ring unchanged  |
+| N2  | Add a task with two subtasks, finish both, then restart the service                      | The task finishes itself, XP rises by its priority plus 10, and all of it is still there |
+| N3  | Leave one task open and one finished, and wait past midnight                             | The open one carries over and the finished one is gone. XP stays                         |

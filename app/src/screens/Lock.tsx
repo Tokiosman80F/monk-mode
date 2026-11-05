@@ -101,14 +101,14 @@ export function LockWizard({ onDone }: { onDone?: () => void }) {
             <ul className="list-disc pl-5 text-sm">
               <li>Add sites to either list</li>
               <li>Move a site to always blocked</li>
-              <li>Lower the daily allowance</li>
+              <li>Lower any site&apos;s daily limit</li>
             </ul>
           </div>
           <div>
             <p className="font-medium">You won&apos;t be able to:</p>
             <ul className="list-disc pl-5 text-sm">
-              <li>Remove any site, or move one back to the allowance list</li>
-              <li>Raise the daily allowance</li>
+              <li>Remove any site, or give an always blocked site a limit</li>
+              <li>Raise any site&apos;s daily limit</li>
               <li>Turn off the Shorts and Reels blocker</li>
               <li>Shorten or remove the lock</li>
               <li>Stop the service or uninstall the app</li>

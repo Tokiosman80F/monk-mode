@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { formatDuration, streakText } from "./view";
+import type { Task } from "./types/Task";
+import { formatDuration, streakText, topTasks } from "./view";
 
 describe("formatDuration", () => {
   it.each([
@@ -24,4 +25,27 @@ describe("streakText", () => {
       "Day 12 of 90. Streak: 4 days.",
     );
   });
+});
+
+it("topTasks leaves out finished ones and puts high priority first", () => {
+  const task = (
+    id: number,
+    priority: Task["priority"],
+    done = false,
+  ): Task => ({
+    id,
+    title: String(id),
+    priority,
+    done,
+    done_on: null,
+    subtasks: [],
+  });
+  const tasks = [
+    task(1, "low"),
+    task(2, "high", true),
+    task(3, "high"),
+    task(4, "medium"),
+  ];
+  expect(topTasks(tasks, 2).map((t) => t.id)).toEqual([3, 4]);
+  expect(topTasks(tasks, 9)).toHaveLength(3);
 });

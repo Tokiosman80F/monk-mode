@@ -5,4 +5,4 @@ export type FocusSession = {
 /**
  * Assigned by the database.
  */
-id: number | null, block_name: string, started_at: string, ended_at: string, kind: FocusKind, };
+id: number | null, task_title: string, started_at: string, ended_at: string, kind: FocusKind, };

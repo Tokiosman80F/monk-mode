@@ -8,11 +8,12 @@ fn strings(items: &[&str]) -> Vec<String> {
     items.iter().map(|s| s.to_string()).collect()
 }
 
+/// A site with its own daily limit.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
-pub struct StudyBlock {
-    pub name: String,
-    pub target_min: u32,
+pub struct AllowanceSite {
+    pub domain: String,
+    pub daily_min: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -20,11 +21,9 @@ pub struct StudyBlock {
 pub struct Settings {
     pub version: u32,
     pub setup_done: bool,
-    pub daily_allowance_min: u32,
-    pub allowance_sites: Vec<String>,
+    pub allowance_sites: Vec<AllowanceSite>,
     pub always_blocked: Vec<String>,
     pub shorts_blocker_enabled: bool,
-    pub study_blocks: Vec<StudyBlock>,
     pub pomodoro_focus_min: u32,
     pub pomodoro_break_min: u32,
     pub daily_focus_target_min: u32,
@@ -32,37 +31,111 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        let block = |name: &str, hours: u32| StudyBlock {
-            name: name.to_string(),
-            target_min: hours * 60,
+        let site = |domain: &str, daily_min: u32| AllowanceSite {
+            domain: domain.to_string(),
+            daily_min,
         };
         Self {
-            version: 1,
+            version: 2,
             setup_done: false,
-            daily_allowance_min: 10,
-            allowance_sites: strings(&[
-                "youtube.com",
-                "facebook.com",
-                "instagram.com",
-                "x.com",
-                "twitter.com",
-                "reddit.com",
-                "open.spotify.com",
-                "music.youtube.com",
-                "soundcloud.com",
-            ]),
+            allowance_sites: vec![
+                site("youtube.com", 30),
+                site("facebook.com", 10),
+                site("instagram.com", 10),
+                site("messenger.com", 10),
+                site("x.com", 10),
+                site("twitter.com", 10),
+                site("reddit.com", 10),
+                site("open.spotify.com", 10),
+                site("music.youtube.com", 10),
+                site("soundcloud.com", 10),
+            ],
             always_blocked: strings(&["tiktok.com", "tiktokv.com", "tiktokcdn.com"]),
             shorts_blocker_enabled: true,
-            study_blocks: vec![
-                block("React", 3),
-                block("Building", 6),
-                block("LinkedIn course", 2),
-            ],
             pomodoro_focus_min: 50,
             pomodoro_break_min: 10,
             daily_focus_target_min: 11 * 60,
         }
     }
+}
+
+impl Settings {
+    /// Reads stored settings. Version 1 had one shared allowance, so each site starts on that
+    /// number, which can't loosen a running lock. Its study blocks are dropped for tasks.
+    pub fn from_stored(json: &str) -> serde_json::Result<Self> {
+        let mut value: serde_json::Value = serde_json::from_str(json)?;
+        if value["version"] == 1 {
+            let daily_min = value["daily_allowance_min"].clone();
+            let sites: Vec<_> = value["allowance_sites"]
+                .as_array()
+                .map(|sites| {
+                    sites
+                        .iter()
+                        .map(|domain| serde_json::json!({ "domain": domain, "daily_min": daily_min }))
+                        .collect()
+                })
+                .unwrap_or_default();
+            value["allowance_sites"] = sites.into();
+            value["version"] = 2.into();
+        }
+        serde_json::from_value(value)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum Priority {
+    High,
+    Medium,
+    Low,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Subtask {
+    pub id: u32,
+    pub title: String,
+    pub done: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Task {
+    pub id: u32,
+    pub title: String,
+    pub priority: Priority,
+    pub done: bool,
+    /// Set by the service. Finished tasks leave the list the day after.
+    pub done_on: Option<NaiveDate>,
+    pub subtasks: Vec<Subtask>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum Badge {
+    FirstFocus,
+    Focus10h,
+    Focus100h,
+    Streak3,
+    Streak7,
+    Streak30,
+    Streak90,
+    Tasks10,
+    Tasks100,
+}
+
+/// Worked out from usage history, never stored on its own (F11).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Progress {
+    pub xp: u32,
+    pub today_xp: u32,
+    pub level: u32,
+    pub level_xp: u32,
+    pub next_level_xp: u32,
+    pub badges: Vec<Badge>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -84,8 +157,13 @@ pub struct UsageDay {
     pub date: NaiveDate,
     pub allowance_used_sec: u32,
     pub blocked_attempts: u32,
-    /// Focus seconds per study block name.
+    /// Focus seconds per task title.
     pub focus_sec: BTreeMap<String, u32>,
+    /// Seconds used per allowance site.
+    pub site_used_sec: BTreeMap<String, u32>,
+    /// XP from tasks and subtasks, before the daily cap.
+    pub task_xp: u32,
+    pub tasks_done: u32,
 }
 
 impl UsageDay {
@@ -95,11 +173,18 @@ impl UsageDay {
             allowance_used_sec: 0,
             blocked_attempts: 0,
             focus_sec: BTreeMap::new(),
+            site_used_sec: BTreeMap::new(),
+            task_xp: 0,
+            tasks_done: 0,
         }
     }
 
     pub fn total_focus_sec(&self) -> u32 {
         self.focus_sec.values().sum()
+    }
+
+    pub fn site_used(&self, domain: &str) -> u32 {
+        self.site_used_sec.get(domain).copied().unwrap_or(0)
     }
 }
 
@@ -116,7 +201,7 @@ pub enum FocusKind {
 pub struct FocusSession {
     /// Assigned by the database.
     pub id: Option<u32>,
-    pub block_name: String,
+    pub task_title: String,
     pub started_at: DateTime<Utc>,
     pub ended_at: DateTime<Utc>,
     pub kind: FocusKind,
@@ -128,7 +213,7 @@ pub struct FocusSession {
 pub enum PomodoroState {
     Idle,
     Focus {
-        block_name: String,
+        task_title: String,
         started_at: DateTime<Utc>,
         remaining_sec: u32,
     },
@@ -153,6 +238,8 @@ pub struct State {
     pub pomodoro: PomodoroState,
     pub streak_days: u32,
     pub lock_day: Option<LockDay>,
+    pub tasks: Vec<Task>,
+    pub progress: Progress,
     /// Past days, oldest first. Kept off the wire: `state_changed` goes out every second.
     #[serde(skip)]
     #[ts(skip)]
@@ -168,6 +255,8 @@ impl State {
             pomodoro: PomodoroState::Idle,
             streak_days: 0,
             lock_day: None,
+            tasks: Vec::new(),
+            progress: Progress::default(),
             history: Vec::new(),
         }
     }
@@ -196,19 +285,24 @@ mod tests {
     #[test]
     fn defaults_match_the_prd() {
         let s = Settings::default();
-        assert_eq!(s.daily_allowance_min, 10);
+        let sites: Vec<_> = s
+            .allowance_sites
+            .iter()
+            .map(|site| (site.domain.as_str(), site.daily_min))
+            .collect();
         assert_eq!(
-            s.allowance_sites,
+            sites,
             [
-                "youtube.com",
-                "facebook.com",
-                "instagram.com",
-                "x.com",
-                "twitter.com",
-                "reddit.com",
-                "open.spotify.com",
-                "music.youtube.com",
-                "soundcloud.com"
+                ("youtube.com", 30),
+                ("facebook.com", 10),
+                ("instagram.com", 10),
+                ("messenger.com", 10),
+                ("x.com", 10),
+                ("twitter.com", 10),
+                ("reddit.com", 10),
+                ("open.spotify.com", 10),
+                ("music.youtube.com", 10),
+                ("soundcloud.com", 10)
             ]
         );
         assert_eq!(
@@ -217,18 +311,44 @@ mod tests {
         );
         assert!(s.shorts_blocker_enabled);
         assert!(!s.setup_done);
-        let blocks: Vec<_> = s
-            .study_blocks
-            .iter()
-            .map(|b| (b.name.as_str(), b.target_min))
-            .collect();
-        assert_eq!(
-            blocks,
-            [("React", 180), ("Building", 360), ("LinkedIn course", 120)]
-        );
         assert_eq!(s.pomodoro_focus_min, 50);
         assert_eq!(s.pomodoro_break_min, 10);
         assert_eq!(s.daily_focus_target_min, 660);
+    }
+
+    #[test]
+    fn version_1_settings_keep_their_sites_and_shared_allowance() {
+        let stored = r#"{
+            "version": 1, "setup_done": true, "daily_allowance_min": 7,
+            "allowance_sites": ["youtube.com", "reddit.com"],
+            "always_blocked": ["tiktok.com"], "shorts_blocker_enabled": true,
+            "study_blocks": [{ "name": "React", "target_min": 180 }],
+            "pomodoro_focus_min": 25, "pomodoro_break_min": 5, "daily_focus_target_min": 600
+        }"#;
+        let s = Settings::from_stored(stored).unwrap();
+        assert_eq!(s.version, 2);
+        assert!(s.setup_done);
+        assert_eq!(s.pomodoro_focus_min, 25);
+        assert_eq!(
+            s.allowance_sites,
+            [
+                AllowanceSite {
+                    domain: "youtube.com".to_string(),
+                    daily_min: 7
+                },
+                AllowanceSite {
+                    domain: "reddit.com".to_string(),
+                    daily_min: 7
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn current_settings_round_trip() {
+        let s = Settings::default();
+        let json = serde_json::to_string(&s).unwrap();
+        assert_eq!(Settings::from_stored(&json).unwrap(), s);
     }
 
     #[test]

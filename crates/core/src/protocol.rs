@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::engine::{ActiveTab, BlockedSet};
-use crate::models::{Settings, State};
+use crate::models::{Settings, State, Task};
 
 pub const PIPE_NAME: &str = r"\\.\pipe\monkmode";
 
@@ -18,8 +18,9 @@ pub enum Message {
     StartLock {
         ends_at: DateTime<Utc>,
     },
+    UpdateTasks(Vec<Task>),
     StartPomodoro {
-        block_name: String,
+        task_id: Option<u32>,
     },
     StopPomodoro,
     GetStats {

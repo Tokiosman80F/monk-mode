@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { monkDark, monkLight } from "./theme";
+import { monkDark as t } from "./theme";
 
 function luminance(hex: string) {
   const [r, g, b] = [1, 3, 5]
@@ -13,22 +13,17 @@ function contrast(a: string, b: string) {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-describe.each([
-  ["monk-light", monkLight],
-  ["monk-dark", monkDark],
-])("%s", (_, t) => {
+describe("monk-dark", () => {
   it.each([
     ["base-content on base-100", t["base-content"], t["base-100"]],
     ["base-content on base-200", t["base-content"], t["base-200"]],
     ["base-content on base-300", t["base-content"], t["base-300"]],
     ["neutral on base-100", t.neutral, t["base-100"]],
     ["neutral on base-200", t.neutral, t["base-200"]],
-  ])("body text %s passes AA", (_, fg, bg) => {
+    ["primary on base-200", t.primary, t["base-200"]],
+    ["error on base-200", t.error, t["base-200"]],
+    ["button label on primary", t["primary-content"], t.primary],
+  ])("%s passes AA", (_, fg, bg) => {
     expect(contrast(fg, bg)).toBeGreaterThanOrEqual(4.5);
-  });
-
-  // Button labels, not body text: the PRD's light primary pair is 3.9:1, so this is the UI-component bar.
-  it("primary button label reaches 3:1", () => {
-    expect(contrast(t["primary-content"], t.primary)).toBeGreaterThanOrEqual(3);
   });
 });

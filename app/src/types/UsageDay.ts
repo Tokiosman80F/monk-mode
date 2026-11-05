@@ -2,6 +2,14 @@
 
 export type UsageDay = { date: string, allowance_used_sec: number, blocked_attempts: number, 
 /**
- * Focus seconds per study block name.
+ * Focus seconds per task title.
  */
-focus_sec: { [key in string]?: number }, };
+focus_sec: { [key in string]?: number }, 
+/**
+ * Seconds used per allowance site.
+ */
+site_used_sec: { [key in string]?: number }, 
+/**
+ * XP from tasks and subtasks, before the daily cap.
+ */
+task_xp: number, tasks_done: number, };

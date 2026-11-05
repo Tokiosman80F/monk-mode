@@ -137,13 +137,15 @@ function ListsStep({ back, next }: { back: () => void; next: () => void }) {
   return (
     <Card title="Your starting lists">
       <p className="text-sm text-neutral">
-        You can change these later on the Block lists screen.
+        You can change these later on the Limits screen.
       </p>
       <div>
-        <h3 className="font-medium">
-          Allowance sites: {settings.daily_allowance_min} minutes a day, shared
-        </h3>
-        <p className="text-sm">{settings.allowance_sites.join(", ")}</p>
+        <h3 className="font-medium">Daily limits</h3>
+        <p className="text-sm">
+          {settings.allowance_sites
+            .map((site) => `${site.domain} ${site.daily_min} min`)
+            .join(", ")}
+        </p>
       </div>
       <div>
         <h3 className="font-medium">Always blocked</h3>
@@ -173,7 +175,7 @@ export default function Setup() {
       <div className="mx-auto flex max-w-[760px] flex-col gap-6 p-6">
         <div className="flex items-center gap-2">
           <Logo />
-          <span className="font-serif text-xl font-medium">Monk Mode</span>
+          <span className="font-display text-xl font-semibold">Monk Mode</span>
         </div>
         <ul className="steps">
           {STEPS.map((label, i) => (
@@ -189,9 +191,9 @@ export default function Setup() {
         {step === 0 && (
           <Card title="Welcome">
             <p>
-              A small daily allowance for distracting sites, then they close
-              until midnight. The worst ones stay closed. A lock keeps you to it
-              on a bad day.
+              A daily limit for each distracting site, then it closes until
+              midnight. The worst ones stay closed. A lock keeps you to it on a
+              bad day.
             </p>
             <p>A few steps, then back to work.</p>
             <Nav next={next} nextLabel="Get started" />

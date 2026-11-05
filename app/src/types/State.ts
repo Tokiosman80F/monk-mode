@@ -2,7 +2,9 @@
 import type { Lock } from "./Lock";
 import type { LockDay } from "./LockDay";
 import type { PomodoroState } from "./PomodoroState";
+import type { Progress } from "./Progress";
 import type { Settings } from "./Settings";
+import type { Task } from "./Task";
 import type { UsageDay } from "./UsageDay";
 
-export type State = { settings: Settings, lock: Lock | null, today: UsageDay, pomodoro: PomodoroState, streak_days: number, lock_day: LockDay | null, };
+export type State = { settings: Settings, lock: Lock | null, today: UsageDay, pomodoro: PomodoroState, streak_days: number, lock_day: LockDay | null, tasks: Array<Task>, progress: Progress, };

@@ -9,8 +9,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@fontsource/inter": "^5.1.1",
-    "@fontsource/source-serif-4": "^5.1.1"
+    "@fontsource/bricolage-grotesque": "^5.1.1",
+    "@fontsource/inter": "^5.1.1"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.287",

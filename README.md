@@ -2,11 +2,12 @@
 
 A free Windows app for staying off distracting sites during long study stretches.
 
-- **Daily allowance:** 10 minutes a day (you choose 0–60) shared across sites like YouTube and Reddit, counted only while you're actually watching. Then they close until midnight.
+- **Daily limits per site:** YouTube gets 30 minutes and other sites 10 by default (you choose 0–180 for each), counted only while you're actually watching. Each site closes until midnight when its time runs out.
 - **Always blocked:** the worst sites, like TikTok, stay closed.
-- **Shorts and Reels blocked:** YouTube Shorts, Instagram Reels and Facebook Watch are closed even with allowance left. Normal videos still play.
+- **Shorts and Reels blocked:** YouTube Shorts, Instagram Reels and Facebook Watch are closed even with time left. Normal videos still play.
 - **Commitment lock:** pick an end date, and until then your rules can only get stricter.
-- **Study planner:** daily study blocks, a Pomodoro timer, a streak and simple charts.
+- **Today's tasks:** add and remove tasks with subtasks and a priority, a Pomodoro timer, a streak and simple charts.
+- **XP and levels:** earn XP for focus time and finished tasks, level up and unlock badges.
 
 Desktop apps like Spotify and Discord are never blocked or closed.
 
@@ -24,7 +25,7 @@ Windows 10 or 11 (x64), with Chrome, Edge or Brave.
 
 ### Add the browser extension
 
-Do this in **every** browser you use. A browser running without the extension gets its allowance sites blocked after 30 seconds, because without it the app can't measure your time.
+Do this in **every** browser you use. A browser running without the extension gets its sites with limits blocked after 30 seconds, because without it the app can't measure your time.
 
 1. Open `chrome://extensions` (`edge://extensions` in Edge, `brave://extensions` in Brave).
 2. Turn on **Developer mode**.
@@ -37,14 +38,14 @@ Use the installed folder, not the **extension** CI artifact. The installed copy 
 
 While a lock is active:
 
-| You can                       | You can't                              |
-| ----------------------------- | -------------------------------------- |
-| Add sites to either list      | Remove any site                        |
-| Move a site to always blocked | Move a site back to the allowance list |
-| Lower the daily allowance     | Raise the daily allowance              |
-|                               | Turn off the Shorts and Reels blocker  |
-|                               | Shorten or remove the lock             |
-|                               | Stop the service or uninstall the app  |
+| You can                       | You can't                             |
+| ----------------------------- | ------------------------------------- |
+| Add sites to either list      | Remove any site                       |
+| Move a site to always blocked | Give an always blocked site a limit   |
+| Lower a site's daily limit    | Raise a site's daily limit            |
+|                               | Turn off the Shorts and Reels blocker |
+|                               | Shorten or remove the lock            |
+|                               | Stop the service or uninstall the app |
 
 The rules are enforced by a Windows Service, not the app, so closing the app changes nothing. The service rewrites its hosts file block every 5 seconds. It keeps the lock's end date in its database and as a signed copy in the registry, so deleting one doesn't unlock. Turning the clock back doesn't shorten a lock either.
 
@@ -55,8 +56,8 @@ Starting a lock asks you to type `I commit to monk mode`. **There's no undo.** T
 The goal is to make giving up slow and annoying, not impossible. An admin user can still get around it:
 
 - **Safe Mode or a Windows reinstall** gets past the service.
-- **Moving the system clock ahead** ends a lock early and refills the allowance. Only moving it back is protected.
-- **Other browsers**, such as Firefox, aren't monitored. The hosts file still blocks allowance sites once they're used up, but time spent there isn't counted.
+- **Moving the system clock ahead** ends a lock early and refills the limits. Only moving it back is protected.
+- **Other browsers**, such as Firefox, aren't monitored. The hosts file still blocks sites once their limits are used up, but time spent there isn't counted.
 - **Secure DNS (DNS over HTTPS)** can skip the hosts file in a browser. The extension still blocks the site there.
 - **A muted video** with no mouse or keyboard input stops counting after 2 minutes, because the browser reports you as idle.
 - **Upgrades** can't be installed during a lock, because upgrading runs the old uninstaller.
@@ -65,7 +66,7 @@ The goal is to make giving up slow and annoying, not impossible. An admin user c
 ## How it's built
 
 ```
-crates/core       Rules engine: allowance, lock rules, streaks. Pure Rust, no OS calls.
+crates/core       Rules engine: limits, lock rules, tasks, XP. Pure Rust, no OS calls.
 crates/platform   Windows: hosts file, browser detection, registry, user-session launch.
 crates/service    monk-service.exe: the main loop, SQLite, WebSocket and named pipe servers.
 app/              Tauri 2 app: React, TypeScript and DaisyUI, plus the tray.

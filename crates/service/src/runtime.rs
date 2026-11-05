@@ -264,7 +264,7 @@ fn describe(event: &Event) -> String {
         Event::Warn30s => "30 seconds of allowance left".to_string(),
         Event::AllowanceUsedUp => "Allowance used up".to_string(),
         Event::DayRolled(day) => format!("New day. Finished {}", day.date),
-        Event::FocusEnded(session) => format!("Focus session ended: {}", session.block_name),
+        Event::FocusEnded(session) => format!("Focus session ended: {}", session.task_title),
         Event::BreakEnded => "Break ended".to_string(),
     }
 }

@@ -3,14 +3,16 @@ import { listen } from "@tauri-apps/api/event";
 import type { Settings } from "./types/Settings";
 import type { Snapshot } from "./types/Snapshot";
 import type { Stats } from "./types/Stats";
+import type { Task } from "./types/Task";
 
 export const api = {
   getState: () => invoke<Snapshot>("get_state"),
   updateSettings: (settings: Settings) =>
     invoke<Snapshot>("update_settings", { settings }),
   startLock: (endsAt: string) => invoke<Snapshot>("start_lock", { endsAt }),
-  startPomodoro: (blockName: string) =>
-    invoke<Snapshot>("start_pomodoro", { blockName }),
+  updateTasks: (tasks: Task[]) => invoke<Snapshot>("update_tasks", { tasks }),
+  startPomodoro: (taskId: number | null) =>
+    invoke<Snapshot>("start_pomodoro", { taskId }),
   stopPomodoro: () => invoke<Snapshot>("stop_pomodoro"),
   getStats: (days: number) => invoke<Stats>("get_stats", { days }),
   installService: () => invoke<void>("install_service"),

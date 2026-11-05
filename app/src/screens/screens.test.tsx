@@ -5,12 +5,14 @@ import { api } from "../api";
 import { LOCK_PHRASE } from "../lib";
 import { FUTURE_LOCK, makeSnapshot, setStore } from "../test/fixtures";
 import About from "./About";
-import BlockLists from "./BlockLists";
+import FocusSettings from "./FocusSettings";
+import Limits from "./Limits";
 import LockScreen from "./Lock";
 import Pomodoro from "./Pomodoro";
-import Schedule from "./Schedule";
+import Rewards from "./Rewards";
 import Setup from "./Setup";
 import StatsScreen from "./Stats";
+import Tasks from "./Tasks";
 import Today from "./Today";
 
 vi.mock("../api", () => ({
@@ -18,6 +20,7 @@ vi.mock("../api", () => ({
   api: {
     getState: vi.fn(),
     updateSettings: vi.fn(),
+    updateTasks: vi.fn(),
     startLock: vi.fn(),
     startPomodoro: vi.fn(),
     stopPomodoro: vi.fn(),
@@ -32,6 +35,7 @@ vi.mock("../api", () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(api.updateSettings).mockResolvedValue(makeSnapshot());
+  vi.mocked(api.updateTasks).mockResolvedValue(makeSnapshot());
   vi.mocked(api.startPomodoro).mockResolvedValue(makeSnapshot());
   vi.mocked(api.stopPomodoro).mockResolvedValue(makeSnapshot());
   vi.mocked(api.startLock).mockResolvedValue(makeSnapshot());
@@ -41,18 +45,61 @@ function savedSettings() {
   return vi.mocked(api.updateSettings).mock.calls[0][0];
 }
 
+function renderToday() {
+  return render(
+    <MemoryRouter>
+      <Today />
+    </MemoryRouter>,
+  );
+}
+
+function savedTasks() {
+  return vi.mocked(api.updateTasks).mock.calls[0][0];
+}
+
 describe("Today", () => {
-  it("shows allowance, progress, streak and the start button", () => {
+  it("shows a ring per site, tasks, level, streak and the start button", () => {
     setStore();
-    render(<Today />);
-    expect(screen.getByText("8:00")).toBeInTheDocument();
-    expect(screen.getByText("8 minutes left for today.")).toBeInTheDocument();
-    expect(screen.getByText("1h 40m / 3h")).toBeInTheDocument();
-    expect(screen.getByLabelText("React")).toHaveAttribute("value", "6000");
+    renderToday();
+    expect(screen.getByLabelText("youtube.com: 28m")).toBeInTheDocument();
+    expect(screen.getByLabelText("reddit.com: 10m")).toBeInTheDocument();
+    expect(screen.getByLabelText("Finish Ship the page")).toBeInTheDocument();
+    expect(screen.getByLabelText("Level 3")).toBeInTheDocument();
+    expect(screen.getByText("20 / 300 XP")).toBeInTheDocument();
     expect(screen.getByText("4 days")).toBeInTheDocument();
+    expect(screen.getByText("1h 40m / 11h")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /Start Pomodoro/ }),
+      screen.getByRole("button", { name: /Start focus/ }),
     ).toBeInTheDocument();
+  });
+
+  it("shows every site as closed during focus", () => {
+    setStore(({ state }) => {
+      state.pomodoro = {
+        phase: "focus",
+        task_title: "React",
+        started_at: "2026-11-05T09:00:00Z",
+        remaining_sec: 60,
+      };
+    });
+    renderToday();
+    expect(screen.getByLabelText("youtube.com: Closed")).toBeInTheDocument();
+  });
+
+  it("links to the rest when there are more sites than rings", () => {
+    setStore(({ state }) => {
+      for (let i = 0; i < 6; i++) {
+        state.settings.allowance_sites.push({
+          domain: `site${i}.com`,
+          daily_min: 10,
+        });
+      }
+    });
+    renderToday();
+    expect(
+      screen.getByRole("link", { name: "See all 8 limits" }),
+    ).toBeVisible();
+    expect(screen.getAllByRole("img", { name: /: 10m$/ })).toHaveLength(5);
   });
 
   it("shows the day counter while locked", () => {
@@ -60,39 +107,184 @@ describe("Today", () => {
       state.lock = FUTURE_LOCK;
       state.lock_day = { day: 12, total: 90 };
     });
-    render(<Today />);
-    expect(screen.getByText("Day 12 of 90. Keep going.")).toBeInTheDocument();
+    renderToday();
+    expect(screen.getByText(/Day 12 of 90. Keep going./)).toBeInTheDocument();
   });
 
   it("explains a browser without the extension", () => {
     setStore((s) => {
       s.missing_browsers = ["msedge.exe"];
     });
-    render(<Today />);
+    renderToday();
     expect(screen.getByRole("status")).toHaveTextContent(
       "Edge is open without the extension",
     );
   });
 });
 
+describe("Tasks", () => {
+  it("adds a task with a chosen priority", async () => {
+    setStore();
+    render(<Tasks />);
+    fireEvent.change(screen.getByLabelText("New task"), {
+      target: { value: "  Read docs  " },
+    });
+    fireEvent.change(screen.getByLabelText("New task priority"), {
+      target: { value: "high" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() =>
+      expect(savedTasks()[2]).toMatchObject({
+        id: 3,
+        title: "Read docs",
+        priority: "high",
+      }),
+    );
+  });
+
+  it("skips a blank task", () => {
+    setStore();
+    render(<Tasks />);
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect(api.updateTasks).not.toHaveBeenCalled();
+  });
+
+  it("removes a task", async () => {
+    setStore();
+    render(<Tasks />);
+    fireEvent.click(screen.getByRole("button", { name: "Remove Learn hooks" }));
+    await waitFor(() => expect(savedTasks().map((t) => t.id)).toEqual([2]));
+  });
+
+  it("finishing a task saves it and shows the XP", async () => {
+    setStore();
+    render(<Tasks />);
+    fireEvent.click(screen.getByLabelText("Finish Ship the page"));
+    expect(screen.getByText("+50 XP")).toBeInTheDocument();
+    await waitFor(() => expect(savedTasks()[1].done).toBe(true));
+  });
+
+  it("changes priority", async () => {
+    setStore();
+    render(<Tasks />);
+    fireEvent.change(screen.getByLabelText("Priority of Learn hooks"), {
+      target: { value: "low" },
+    });
+    await waitFor(() => expect(savedTasks()[0].priority).toBe("low"));
+  });
+
+  it("opens subtasks, adds, finishes and removes them", async () => {
+    setStore();
+    render(<Tasks />);
+    expect(screen.getByText("1/2")).toBeInTheDocument();
+    expect(screen.queryByText("Test it")).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show subtasks of Ship the page" }),
+    );
+    expect(screen.getByText("Test it")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Add a subtask to Ship the page"), {
+      target: { value: "Deploy it" },
+    });
+    fireEvent.submit(
+      screen.getByLabelText("Add a subtask to Ship the page").closest("form")!,
+    );
+    await waitFor(() =>
+      expect(savedTasks()[1].subtasks[2].title).toBe("Deploy it"),
+    );
+
+    vi.mocked(api.updateTasks).mockClear();
+    fireEvent.click(screen.getByLabelText("Finish Test it"));
+    await waitFor(() => expect(savedTasks()[1].done).toBe(true));
+
+    vi.mocked(api.updateTasks).mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Remove Write it" }));
+    await waitFor(() => expect(savedTasks()[1].subtasks).toHaveLength(1));
+  });
+
+  it("starts a focus session on a task, unless one is running", async () => {
+    setStore();
+    const { rerender } = render(<Tasks />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Focus on Learn hooks" }),
+    );
+    await waitFor(() => expect(api.startPomodoro).toHaveBeenCalledWith(1));
+
+    setStore(({ state }) => {
+      state.pomodoro = { phase: "break", remaining_sec: 60 };
+    });
+    rerender(<Tasks />);
+    expect(
+      screen.getByRole("button", { name: "Focus on Learn hooks" }),
+    ).toBeDisabled();
+  });
+
+  it("invites a first task when the list is empty", () => {
+    setStore(({ state }) => {
+      state.tasks = [];
+    });
+    render(<Tasks />);
+    expect(screen.getByText(/Add your first task/)).toBeInTheDocument();
+  });
+
+  it("shows a refusal from the service", async () => {
+    setStore();
+    vi.mocked(api.updateTasks).mockRejectedValue({ message: "Too long." });
+    render(<Tasks />);
+    fireEvent.click(screen.getByLabelText("Finish Learn hooks"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Too long.");
+  });
+});
+
+describe("Rewards", () => {
+  it("shows the level, XP to go and which badges are earned", () => {
+    setStore();
+    render(<Rewards />);
+    expect(screen.getByRole("heading", { name: "Level 3" })).toBeVisible();
+    expect(
+      screen.getByText("280 XP to level 4. 320 XP in total."),
+    ).toBeInTheDocument();
+    expect(screen.getAllByTestId("earned")).toHaveLength(1);
+    expect(screen.getAllByTestId("unearned")).toHaveLength(8);
+    expect(screen.getByText("Badges: 1 of 9")).toBeInTheDocument();
+  });
+});
+
 describe("Pomodoro", () => {
-  it("starts on the chosen block", async () => {
+  it("starts on the most important open task by default", async () => {
     setStore();
     render(<Pomodoro />);
-    fireEvent.change(screen.getByRole("combobox"), {
-      target: { value: "Building" },
+    fireEvent.click(screen.getByRole("button", { name: /Start focus/ }));
+    await waitFor(() => expect(api.startPomodoro).toHaveBeenCalledWith(2));
+  });
+
+  it("starts on a chosen task, or on none", async () => {
+    setStore();
+    render(<Pomodoro />);
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "1" } });
+    fireEvent.click(screen.getByRole("button", { name: /Start focus/ }));
+    await waitFor(() => expect(api.startPomodoro).toHaveBeenCalledWith(1));
+
+    vi.mocked(api.startPomodoro).mockClear();
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: /Start focus/ }));
+    await waitFor(() => expect(api.startPomodoro).toHaveBeenCalledWith(null));
+  });
+
+  it("works with no tasks at all", async () => {
+    setStore(({ state }) => {
+      state.tasks = [];
     });
-    fireEvent.click(screen.getByRole("button", { name: /Start Pomodoro/ }));
-    await waitFor(() =>
-      expect(api.startPomodoro).toHaveBeenCalledWith("Building"),
-    );
+    render(<Pomodoro />);
+    fireEvent.click(screen.getByRole("button", { name: /Start focus/ }));
+    await waitFor(() => expect(api.startPomodoro).toHaveBeenCalledWith(null));
   });
 
   it("counts down from what the service pushes, and can stop", async () => {
     setStore(({ state }) => {
       state.pomodoro = {
         phase: "focus",
-        block_name: "React",
+        task_title: "React",
         started_at: "2026-11-05T09:00:00Z",
         remaining_sec: 125,
       };
@@ -107,7 +299,7 @@ describe("Pomodoro", () => {
     setStore(({ state }) => {
       state.pomodoro = {
         phase: "focus",
-        block_name: "React",
+        task_title: "React",
         started_at: "2026-11-05T09:00:00Z",
         remaining_sec: 124,
       };
@@ -133,26 +325,85 @@ describe("Pomodoro", () => {
     setStore();
     vi.mocked(api.startPomodoro).mockRejectedValue({ message: "Nope." });
     render(<Pomodoro />);
-    fireEvent.click(screen.getByRole("button", { name: /Start Pomodoro/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Start focus/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Nope.");
   });
 });
 
-describe("Block lists", () => {
+describe("Limits", () => {
+  function minutes(domain: string) {
+    return screen.getByLabelText(`Daily minutes for ${domain}`);
+  }
+
   it("can remove when not locked", async () => {
     setStore();
-    render(<BlockLists />);
+    render(<Limits />);
     fireEvent.click(screen.getByRole("button", { name: "Remove reddit.com" }));
     await waitFor(() =>
-      expect(savedSettings().allowance_sites).toEqual(["youtube.com"]),
+      expect(savedSettings().allowance_sites).toEqual([
+        { domain: "youtube.com", daily_min: 30 },
+      ]),
     );
+  });
+
+  it("saves one site's minutes when the field is left", async () => {
+    setStore();
+    render(<Limits />);
+    const field = minutes("reddit.com");
+    expect(field).toHaveValue(10);
+    fireEvent.change(field, { target: { value: "25" } });
+    expect(api.updateSettings).not.toHaveBeenCalled();
+    fireEvent.blur(field);
+    await waitFor(() =>
+      expect(savedSettings().allowance_sites).toEqual([
+        { domain: "youtube.com", daily_min: 30 },
+        { domain: "reddit.com", daily_min: 25 },
+      ]),
+    );
+  });
+
+  it("doesn't save an empty or unchanged field", () => {
+    setStore();
+    render(<Limits />);
+    const field = minutes("reddit.com");
+    fireEvent.blur(field);
+    fireEvent.change(field, { target: { value: "" } });
+    fireEvent.blur(field);
+    expect(api.updateSettings).not.toHaveBeenCalled();
+    expect(field).toHaveValue(10);
+  });
+
+  it("caps minutes at the current value when locked, otherwise at 180", () => {
+    setStore();
+    const { unmount } = render(<Limits />);
+    expect(minutes("reddit.com")).toHaveAttribute("max", "180");
+    unmount();
+
+    setStore(({ state }) => {
+      state.lock = FUTURE_LOCK;
+    });
+    render(<Limits />);
+    expect(minutes("reddit.com")).toHaveAttribute("max", "10");
+    expect(minutes("youtube.com")).toHaveAttribute("max", "30");
+  });
+
+  it("shows the service's refusal", async () => {
+    setStore();
+    vi.mocked(api.updateSettings).mockRejectedValue({
+      code: "LOCKED_LOOSENING",
+      message: "The daily limit for reddit.com can't go up while locked.",
+    });
+    render(<Limits />);
+    fireEvent.change(minutes("reddit.com"), { target: { value: "60" } });
+    fireEvent.blur(minutes("reddit.com"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("can't go up");
   });
 
   it("disables remove and the Shorts toggle when locked, with a tooltip", () => {
     setStore(({ state }) => {
       state.lock = FUTURE_LOCK;
     });
-    render(<BlockLists />);
+    render(<Limits />);
     const remove = screen.getByRole("button", { name: "Remove reddit.com" });
     expect(remove).toBeDisabled();
     expect(remove.parentElement?.getAttribute("data-tip")).toMatch(
@@ -165,28 +416,39 @@ describe("Block lists", () => {
     setStore(({ state }) => {
       state.lock = FUTURE_LOCK;
     });
-    render(<BlockLists />);
+    render(<Limits />);
     fireEvent.change(screen.getByLabelText("Site to add"), {
       target: { value: "https://www.Twitch.tv/x" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
     await waitFor(() =>
-      expect(savedSettings().allowance_sites).toContain("twitch.tv"),
+      expect(savedSettings().allowance_sites).toContainEqual({
+        domain: "twitch.tv",
+        daily_min: 10,
+      }),
     );
 
     vi.mocked(api.updateSettings).mockClear();
-    fireEvent.click(
-      screen.getAllByRole("button", { name: /Move to always blocked/ })[0],
-    );
+    fireEvent.click(screen.getAllByRole("button", { name: /Always block/ })[0]);
     await waitFor(() => {
       expect(savedSettings().always_blocked).toContain("youtube.com");
-      expect(savedSettings().allowance_sites).not.toContain("youtube.com");
+      expect(
+        savedSettings().allowance_sites.map((site) => site.domain),
+      ).not.toContain("youtube.com");
     });
   });
 
-  it("switches lists and skips duplicates", async () => {
+  it("switches lists and skips duplicates on both", async () => {
     setStore();
-    render(<BlockLists />);
+    render(<Limits />);
+    fireEvent.change(screen.getByLabelText("Site to add"), {
+      target: { value: "reddit.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "already on this list",
+    );
+
     fireEvent.click(screen.getByRole("tab", { name: "Always blocked" }));
     expect(screen.getByText("tiktok.com")).toBeInTheDocument();
     expect(screen.queryByText("reddit.com")).not.toBeInTheDocument();
@@ -196,69 +458,40 @@ describe("Block lists", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "already on this list",
+      "tiktok.com is already",
     );
     expect(api.updateSettings).not.toHaveBeenCalled();
   });
 });
 
-describe("Schedule", () => {
+describe("Settings", () => {
   it("saves edits", async () => {
     setStore();
-    render(<Schedule />);
-    fireEvent.change(screen.getByLabelText("Minutes per day"), {
-      target: { value: "5" },
-    });
+    render(<FocusSettings />);
     fireEvent.change(screen.getByLabelText("Focus minutes"), {
       target: { value: "25" },
     });
-    fireEvent.change(screen.getAllByLabelText("Name")[0], {
-      target: { value: "React docs" },
-    });
-    fireEvent.change(screen.getAllByLabelText("Hours")[0], {
-      target: { value: "2.5" },
+    fireEvent.change(screen.getByLabelText("Daily focus target (hours)"), {
+      target: { value: "8" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(api.updateSettings).toHaveBeenCalled());
     const saved = savedSettings();
-    expect(saved.daily_allowance_min).toBe(5);
     expect(saved.pomodoro_focus_min).toBe(25);
-    expect(saved.study_blocks[0]).toEqual({
-      name: "React docs",
-      target_min: 150,
-    });
+    expect(saved.daily_focus_target_min).toBe(480);
     expect(await screen.findByText("Saved.")).toBeInTheDocument();
   });
 
-  it("caps the allowance at the current value when locked, otherwise at 60", () => {
+  it("doesn't overwrite limits changed elsewhere", async () => {
     setStore();
-    const { unmount } = render(<Schedule />);
-    expect(screen.getByLabelText("Minutes per day")).toHaveAttribute(
-      "max",
-      "60",
-    );
-    unmount();
-
+    const { rerender } = render(<FocusSettings />);
     setStore(({ state }) => {
-      state.lock = FUTURE_LOCK;
+      state.settings.allowance_sites = [];
     });
-    render(<Schedule />);
-    expect(screen.getByLabelText("Minutes per day")).toHaveAttribute(
-      "max",
-      "10",
-    );
-  });
-
-  it("shows the service's refusal", async () => {
-    setStore();
-    vi.mocked(api.updateSettings).mockRejectedValue({
-      code: "LOCKED_LOOSENING",
-      message: "The daily allowance can't go up while locked.",
-    });
-    render(<Schedule />);
+    rerender(<FocusSettings />);
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("can't go up");
+    await waitFor(() => expect(savedSettings().allowance_sites).toEqual([]));
   });
 });
 

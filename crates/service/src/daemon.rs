@@ -14,6 +14,7 @@ use monk_core::lock::{
 use monk_core::models::{FocusSession, Lock, Now, Settings, State, UsageDay};
 use monk_core::protocol::{ErrorCode, Message};
 use monk_core::stats::build_stats;
+use monk_core::tasks::{apply_tasks, prune_tasks};
 use monk_platform::registry::LockRegistryError;
 use serde_json::{json, Value};
 use tracing::{error, warn};
@@ -29,7 +30,8 @@ const FRESH_SEC: u64 = 15;
 /// After a sleep or a stall, the gap isn't study time.
 const MAX_TICK_SEC: u32 = 5;
 const LAST_SEEN_SAVE_EVERY_SEC: u64 = 60;
-const HISTORY_DAYS: u32 = 400;
+/// XP and badges add up from every saved day, so this is effectively all of them.
+const HISTORY_DAYS: u32 = 3650;
 
 pub trait Platform: Send + 'static {
     fn enforce_hosts(&mut self, domains: &[String]) -> io::Result<bool>;
@@ -139,6 +141,12 @@ impl<P: Platform> Daemon<P> {
             defaults
         });
         state.lock = reconcile_lock(&db, &mut platform, last_seen);
+        state.tasks = db.load_tasks().unwrap_or_else(|e| {
+            error!("Couldn't read tasks: {e}");
+            Vec::new()
+        });
+        // The service may have been off at midnight.
+        prune_tasks(&mut state.tasks, now.local_date);
 
         let mut history = db.load_days(HISTORY_DAYS).unwrap_or_else(|e| {
             error!("Couldn't read usage history: {e}");
@@ -280,6 +288,7 @@ impl<P: Platform> Daemon<P> {
                 Event::DayRolled(day) => {
                     self.log_db(self.db.save_day(day));
                     self.save_today();
+                    self.log_db(self.db.save_tasks(&self.state.tasks));
                 }
                 Event::FocusEnded(session) => self.save_session(session),
                 _ => {}
@@ -386,8 +395,16 @@ impl<P: Platform> Daemon<P> {
                 self.state.lock = Some(lock);
                 Ok(self.state_json())
             }
-            (Client::Ui, Message::StartPomodoro { block_name }) => {
-                start_pomodoro(&mut self.state, &block_name, now).map_err(invalid)?;
+            (Client::Ui, Message::UpdateTasks(tasks)) => {
+                apply_tasks(&mut self.state, tasks, now.local_date).map_err(invalid)?;
+                self.db
+                    .save_tasks(&self.state.tasks)
+                    .map_err(|e| invalid(format!("Couldn't save tasks: {e}")))?;
+                self.save_today();
+                Ok(self.state_json())
+            }
+            (Client::Ui, Message::StartPomodoro { task_id }) => {
+                start_pomodoro(&mut self.state, task_id, now).map_err(invalid)?;
                 Ok(self.state_json())
             }
             (Client::Ui, Message::StopPomodoro) => {
@@ -440,7 +457,7 @@ impl<P: Platform> Daemon<P> {
 pub mod tests {
     use super::*;
     use chrono::{Duration, TimeZone};
-    use monk_core::models::PomodoroState;
+    use monk_core::models::{PomodoroState, Priority, Task};
     use std::sync::{Arc, Mutex};
 
     #[derive(Default)]
@@ -498,6 +515,15 @@ pub mod tests {
 
     pub fn utc_now(utc: DateTime<Utc>) -> Now {
         Now::new(utc, &Utc)
+    }
+
+    /// Every site on the same daily limit.
+    fn limits(daily_min: u32) -> Settings {
+        let mut settings = Settings::default();
+        for site in &mut settings.allowance_sites {
+            site.daily_min = daily_min;
+        }
+        settings
     }
 
     struct Rig {
@@ -575,6 +601,19 @@ pub mod tests {
             self.daemon.state().today.allowance_used_sec
         }
 
+        fn task(&mut self, title: &str) -> Option<u32> {
+            let task = Task {
+                id: 1,
+                title: title.to_string(),
+                priority: Priority::High,
+                done: false,
+                done_on: None,
+                subtasks: vec![],
+            };
+            self.ui(Message::UpdateTasks(vec![task])).unwrap();
+            Some(1)
+        }
+
         fn lock_for_90_days(&mut self) {
             self.ui(Message::StartLock {
                 ends_at: self.utc + Duration::days(90),
@@ -614,11 +653,7 @@ pub mod tests {
     #[test]
     fn using_up_the_allowance_blocks_on_that_same_tick() {
         let mut rig = Rig::new();
-        rig.ui(Message::UpdateSettings(Settings {
-            daily_allowance_min: 1,
-            ..Settings::default()
-        }))
-        .unwrap();
+        rig.ui(Message::UpdateSettings(limits(1))).unwrap();
         // 59 seconds, re-reporting the tab like the real extension does.
         for _ in 0..59 {
             rig.tab(1, true);
@@ -652,10 +687,8 @@ pub mod tests {
     #[test]
     fn a_long_gap_is_capped_so_sleep_is_not_study_time() {
         let mut rig = Rig::new();
-        rig.ui(Message::StartPomodoro {
-            block_name: "React".to_string(),
-        })
-        .unwrap();
+        let task_id = rig.task("React");
+        rig.ui(Message::StartPomodoro { task_id }).unwrap();
         rig.utc += Duration::hours(3);
         rig.daemon.step(3 * 3600, rig.utc);
         assert_eq!(rig.daemon.state().today.focus_sec["React"], 5);
@@ -724,34 +757,24 @@ pub mod tests {
     fn loosening_while_locked_returns_the_locked_error() {
         let mut rig = Rig::new();
         rig.lock_for_90_days();
-        let result = rig.ui(Message::UpdateSettings(Settings {
-            daily_allowance_min: 30,
-            ..Settings::default()
-        }));
+        let result = rig.ui(Message::UpdateSettings(limits(40)));
         assert_eq!(result.unwrap_err().0, ErrorCode::LockedLoosening);
-        assert_eq!(rig.daemon.state().settings.daily_allowance_min, 10);
+        assert_eq!(rig.daemon.state().settings, Settings::default());
     }
 
     #[test]
     fn tightening_while_locked_is_saved() {
         let mut rig = Rig::new();
         rig.lock_for_90_days();
-        rig.ui(Message::UpdateSettings(Settings {
-            daily_allowance_min: 5,
-            ..Settings::default()
-        }))
-        .unwrap();
+        rig.ui(Message::UpdateSettings(limits(5))).unwrap();
         rig.restart();
-        assert_eq!(rig.daemon.state().settings.daily_allowance_min, 5);
+        assert_eq!(rig.daemon.state().settings.allowance_sites[0].daily_min, 5);
     }
 
     #[test]
     fn invalid_settings_are_rejected_even_without_a_lock() {
         let mut rig = Rig::new();
-        let result = rig.ui(Message::UpdateSettings(Settings {
-            daily_allowance_min: 61,
-            ..Settings::default()
-        }));
+        let result = rig.ui(Message::UpdateSettings(limits(181)));
         assert_eq!(result.unwrap_err().0, ErrorCode::InvalidRequest);
     }
 
@@ -768,19 +791,15 @@ pub mod tests {
     #[test]
     fn pomodoro_messages_drive_the_state_and_block_sites() {
         let mut rig = Rig::new();
-        rig.ui(Message::StartPomodoro {
-            block_name: "React".to_string(),
-        })
-        .unwrap();
+        let task_id = rig.task("React");
+        rig.ui(Message::StartPomodoro { task_id }).unwrap();
         rig.run(1);
         assert!(rig.hosts_has("youtube.com"));
         rig.ui(Message::StopPomodoro).unwrap();
         assert_eq!(rig.daemon.state().pomodoro, PomodoroState::Idle);
         rig.run(1);
         assert!(!rig.hosts_has("youtube.com"));
-        let unknown = rig.ui(Message::StartPomodoro {
-            block_name: "Nope".to_string(),
-        });
+        let unknown = rig.ui(Message::StartPomodoro { task_id: Some(99) });
         assert_eq!(unknown.unwrap_err().0, ErrorCode::InvalidRequest);
     }
 
@@ -788,7 +807,10 @@ pub mod tests {
     fn get_state_and_get_stats_return_their_data() {
         let mut rig = Rig::new();
         let state = rig.ui(Message::GetState).unwrap();
-        assert_eq!(state["state"]["settings"]["daily_allowance_min"], 10);
+        assert_eq!(
+            state["state"]["settings"]["allowance_sites"][0]["daily_min"],
+            30
+        );
         assert!(state["blocked"]["hosts_domains"].is_array());
         let stats = rig.ui(Message::GetStats { days: 7 }).unwrap();
         assert_eq!(stats["days"].as_array().unwrap().len(), 1);
@@ -847,6 +869,43 @@ pub mod tests {
         assert!(!rig.daemon.ui_quit());
     }
 
+    #[test]
+    fn tasks_and_their_xp_survive_a_restart() {
+        let mut rig = Rig::new();
+        rig.task("Ship");
+        let mut tasks = rig.daemon.state().tasks.clone();
+        tasks[0].done = true;
+        rig.ui(Message::UpdateTasks(tasks)).unwrap();
+        assert_eq!(rig.daemon.state().progress.xp, 50);
+
+        rig.restart();
+        rig.run(1);
+        assert_eq!(rig.daemon.state().tasks[0].title, "Ship");
+        assert_eq!(rig.daemon.state().progress.xp, 50);
+    }
+
+    #[test]
+    fn a_finished_task_is_gone_after_midnight_even_if_the_service_was_off() {
+        let mut rig = Rig::new();
+        rig.task("Ship");
+        let mut tasks = rig.daemon.state().tasks.clone();
+        tasks[0].done = true;
+        rig.ui(Message::UpdateTasks(tasks)).unwrap();
+        rig.utc += Duration::days(1);
+        rig.restart();
+        assert!(rig.daemon.state().tasks.is_empty());
+        // Yesterday's XP stays.
+        rig.run(1);
+        assert_eq!(rig.daemon.state().progress.xp, 50);
+    }
+
+    #[test]
+    fn the_extension_cannot_change_tasks() {
+        let mut rig = Rig::new();
+        let result = rig.ext(1, "chrome.exe", Message::UpdateTasks(vec![]));
+        assert_eq!(result.unwrap_err().0, ErrorCode::Unauthorized);
+    }
+
     // Pushes (T3.6)
 
     #[test]
@@ -856,7 +915,7 @@ pub mod tests {
         let first = rig.daemon.push_if_changed().unwrap();
         let parsed: monk_core::protocol::Push = serde_json::from_str(&first).unwrap();
         let monk_core::protocol::Push::StateChanged(snapshot) = parsed;
-        assert_eq!(snapshot.state.settings.daily_allowance_min, 10);
+        assert_eq!(snapshot.state.settings, Settings::default());
 
         rig.run(1);
         assert_eq!(rig.daemon.push_if_changed(), None);
@@ -1029,11 +1088,7 @@ pub mod tests {
         rig.utc += Duration::days(90);
         rig.run(1);
         assert!(!rig.daemon.is_locked());
-        rig.ui(Message::UpdateSettings(Settings {
-            daily_allowance_min: 30,
-            ..Settings::default()
-        }))
-        .unwrap();
+        rig.ui(Message::UpdateSettings(limits(40))).unwrap();
     }
 
     #[test]
@@ -1046,10 +1101,7 @@ pub mod tests {
         rig.utc -= Duration::days(30);
         rig.run(1);
         assert!(rig.daemon.is_locked());
-        let result = rig.ui(Message::UpdateSettings(Settings {
-            daily_allowance_min: 30,
-            ..Settings::default()
-        }));
+        let result = rig.ui(Message::UpdateSettings(limits(40)));
         assert_eq!(result.unwrap_err().0, ErrorCode::LockedLoosening);
     }
 }

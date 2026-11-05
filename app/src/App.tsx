@@ -1,10 +1,11 @@
 import {
   BarChart3,
-  CalendarClock,
+  Gauge,
   Info,
+  LayoutDashboard,
   Lock as LockIcon,
-  ShieldBan,
-  Sun,
+  Settings as SettingsIcon,
+  Trophy,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -17,9 +18,10 @@ import {
   useLocation,
 } from "react-router-dom";
 import About from "./screens/About";
-import BlockLists from "./screens/BlockLists";
+import FocusSettings from "./screens/FocusSettings";
+import Limits from "./screens/Limits";
 import LockScreen from "./screens/Lock";
-import Schedule from "./screens/Schedule";
+import Rewards from "./screens/Rewards";
 import Setup from "./screens/Setup";
 import StatsScreen from "./screens/Stats";
 import Today from "./screens/Today";
@@ -27,11 +29,16 @@ import { useServiceState, useStore } from "./store";
 import { Logo } from "./ui";
 
 const NAV: [string, string, LucideIcon][] = [
-  ["/", "Today", Sun],
-  ["/lists", "Block lists", ShieldBan],
-  ["/schedule", "Schedule", CalendarClock],
+  ["/", "Today", LayoutDashboard],
+  ["/limits", "Limits", Gauge],
+  ["/rewards", "Rewards", Trophy],
   ["/stats", "Stats", BarChart3],
   ["/lock", "Lock", LockIcon],
+];
+
+const NAV_BOTTOM: [string, string, LucideIcon][] = [
+  ["/settings", "Settings", SettingsIcon],
+  ["/about", "About", Info],
 ];
 
 function NavItem({
@@ -44,16 +51,20 @@ function NavItem({
   Icon: LucideIcon;
 }) {
   return (
-    <li>
+    <li className="tooltip tooltip-right" data-tip={label}>
       <NavLink
         to={to}
         end
+        aria-label={label}
         className={({ isActive }) =>
-          isActive ? "active !bg-primary !text-primary-content" : ""
+          `flex h-11 w-11 items-center justify-center rounded-btn transition-colors duration-150 ${
+            isActive
+              ? "active bg-primary text-primary-content shadow-glow"
+              : "text-neutral hover:bg-base-300 hover:text-base-content"
+          }`
         }
       >
-        <Icon size={18} />
-        {label}
+        <Icon size={20} aria-hidden="true" />
       </NavLink>
     </li>
   );
@@ -68,24 +79,23 @@ function Layout() {
 
   return (
     <div className="flex h-screen bg-base-100 text-base-content">
-      <aside className="flex w-56 shrink-0 flex-col gap-6 border-r border-base-300 bg-base-200 p-4">
-        <div className="flex items-center gap-2 px-2 pt-2">
-          <Logo breathing={focusing} />
-          <span className="font-serif text-xl font-medium">Monk Mode</span>
-        </div>
-        <ul className="menu gap-1 p-0">
+      <aside className="z-10 flex w-[72px] shrink-0 flex-col items-center gap-6 border-r border-base-300 bg-base-200 py-4">
+        <Logo breathing={focusing} className="w-9" />
+        <ul className="flex flex-col gap-2">
           {NAV.map(([to, label, Icon]) => (
             <NavItem key={to} to={to} label={label} Icon={Icon} />
           ))}
         </ul>
-        <ul className="menu mt-auto p-0">
-          <NavItem to="/about" label="About" Icon={Info} />
+        <ul className="mt-auto flex flex-col gap-2">
+          {NAV_BOTTOM.map(([to, label, Icon]) => (
+            <NavItem key={to} to={to} label={label} Icon={Icon} />
+          ))}
         </ul>
       </aside>
-      <main className="flex-1 overflow-y-auto">
+      <main className="min-w-0 flex-1 overflow-y-auto">
         <div
           key={pathname}
-          className="mx-auto flex max-w-[760px] animate-fade-up flex-col gap-6 p-6"
+          className="mx-auto flex max-w-[1080px] animate-fade-in flex-col gap-5 p-6"
         >
           {connected === false && (
             <p role="alert" className="alert alert-warning">
@@ -112,10 +122,11 @@ export default function App() {
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<Today />} />
-          <Route path="/lists" element={<BlockLists />} />
-          <Route path="/schedule" element={<Schedule />} />
+          <Route path="/limits" element={<Limits />} />
+          <Route path="/rewards" element={<Rewards />} />
           <Route path="/stats" element={<StatsScreen />} />
           <Route path="/lock" element={<LockScreen />} />
+          <Route path="/settings" element={<FocusSettings />} />
           <Route path="/about" element={<About />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Route>

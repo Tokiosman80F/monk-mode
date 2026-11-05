@@ -5,17 +5,24 @@
 !define MONK_ROOT "${__FILEDIR__}\.."
 
 !macro NSIS_HOOK_PREINSTALL
-  ; A running service can't be replaced. While locked it refuses to stop, and the files are skipped below.
+  ; A running service can't be replaced, and while locked it refuses to stop. Stop here, before any
+  ; file changes: a new app against the old service doesn't work.
   nsExec::Exec 'sc.exe stop MonkModeService'
   Pop $0
   Sleep 2000
+  nsExec::ExecToStack 'cmd /c sc.exe query MonkModeService | find "RUNNING"'
+  Pop $0
+  Pop $1
+  ${If} $0 == 0
+    MessageBox MB_ICONSTOP|MB_OK "Monk Mode can't be updated during a commitment lock. Nothing was changed. Run this again when the lock ends." /SD IDOK
+    SetErrorLevel 2
+    Quit
+  ${EndIf}
 !macroend
 
 !macro NSIS_HOOK_POSTINSTALL
   SetOutPath "$INSTDIR"
-  SetOverwrite try
   File "/oname=monk-service.exe" "${MONK_ROOT}\target\release\monk-service.exe"
-  SetOverwrite on
   SetOutPath "$INSTDIR\extension"
   File /r "${MONK_ROOT}\extension\dist\*"
   SetOutPath "$INSTDIR"

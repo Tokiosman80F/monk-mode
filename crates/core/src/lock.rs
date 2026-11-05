@@ -1,10 +1,12 @@
+use std::collections::HashSet;
+
 use chrono::{DateTime, Utc};
 use thiserror::Error;
 
 use crate::domain::clean_domain;
 use crate::models::{Lock, LockDay, Settings};
 
-const MAX_ALLOWANCE_MIN: u32 = 60;
+const MAX_ALLOWANCE_MIN: u32 = 180;
 const MINUTES_PER_DAY: u32 = 24 * 60;
 const SECONDS_PER_DAY: i64 = 24 * 3600;
 
@@ -15,8 +17,8 @@ pub enum LooseningError {
     RemovedSite(String),
     #[error("{0} can't move from always blocked to allowance while locked.")]
     MovedToAllowance(String),
-    #[error("The daily allowance can't go up while locked.")]
-    RaisedAllowance,
+    #[error("The daily limit for {0} can't go up while locked.")]
+    RaisedAllowance(String),
     #[error("The Shorts and Reels blocker can't be turned off while locked.")]
     ShortsBlockerDisabled,
     #[error("The lock can't be shortened.")]
@@ -26,14 +28,14 @@ pub enum LooseningError {
 /// Settings that make no sense, locked or not.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum InvalidSettings {
-    #[error("The daily allowance must be {MAX_ALLOWANCE_MIN} minutes or less.")]
+    #[error("A daily limit must be {MAX_ALLOWANCE_MIN} minutes or less.")]
     AllowanceTooHigh,
+    #[error("{0} is on the list twice.")]
+    DuplicateSite(String),
     #[error("A focus session must be at least 1 minute.")]
     NoFocusLength,
     #[error("The daily focus target can't be more than 24 hours.")]
     TargetTooHigh,
-    #[error("A study block needs a name.")]
-    UnnamedBlock,
     #[error("\"{0}\" is not a clean domain.")]
     BadDomain(String),
     #[error("A lock must end in the future.")]
@@ -43,7 +45,10 @@ pub enum InvalidSettings {
 /// Run on every incoming settings change. Requiring clean domains also keeps `validate_change`
 /// honest: `WWW.YouTube.com` can't stand in for `youtube.com`.
 pub fn validate_settings(s: &Settings) -> Result<(), InvalidSettings> {
-    if s.daily_allowance_min > MAX_ALLOWANCE_MIN {
+    if s.allowance_sites
+        .iter()
+        .any(|site| site.daily_min > MAX_ALLOWANCE_MIN)
+    {
         return Err(InvalidSettings::AllowanceTooHigh);
     }
     if s.pomodoro_focus_min == 0 {
@@ -52,12 +57,17 @@ pub fn validate_settings(s: &Settings) -> Result<(), InvalidSettings> {
     if s.daily_focus_target_min > MINUTES_PER_DAY {
         return Err(InvalidSettings::TargetTooHigh);
     }
-    if s.study_blocks.iter().any(|b| b.name.trim().is_empty()) {
-        return Err(InvalidSettings::UnnamedBlock);
-    }
-    for site in s.allowance_sites.iter().chain(&s.always_blocked) {
+    let allowance = s.allowance_sites.iter().map(|site| &site.domain);
+    for site in allowance.clone().chain(&s.always_blocked) {
         if clean_domain(site).as_deref() != Ok(site.as_str()) {
             return Err(InvalidSettings::BadDomain(site.clone()));
+        }
+    }
+    // A second entry with a bigger number would be a way to raise a limit.
+    let mut seen = HashSet::new();
+    for site in allowance {
+        if !seen.insert(site) {
+            return Err(InvalidSettings::DuplicateSite(site.clone()));
         }
     }
     Ok(())
@@ -75,7 +85,7 @@ pub fn validate_change(
     }
     for site in &old.always_blocked {
         if !new.always_blocked.contains(site) {
-            return Err(if new.allowance_sites.contains(site) {
+            return Err(if new.allowance_sites.iter().any(|s| &s.domain == site) {
                 LooseningError::MovedToAllowance(site.clone())
             } else {
                 LooseningError::RemovedSite(site.clone())
@@ -83,12 +93,14 @@ pub fn validate_change(
         }
     }
     for site in &old.allowance_sites {
-        if !new.allowance_sites.contains(site) && !new.always_blocked.contains(site) {
-            return Err(LooseningError::RemovedSite(site.clone()));
+        match new.allowance_sites.iter().find(|s| s.domain == site.domain) {
+            Some(kept) if kept.daily_min > site.daily_min => {
+                return Err(LooseningError::RaisedAllowance(site.domain.clone()));
+            }
+            Some(_) => {}
+            None if new.always_blocked.contains(&site.domain) => {}
+            None => return Err(LooseningError::RemovedSite(site.domain.clone())),
         }
-    }
-    if new.daily_allowance_min > old.daily_allowance_min {
-        return Err(LooseningError::RaisedAllowance);
     }
     if old.shorts_blocker_enabled && !new.shorts_blocker_enabled {
         return Err(LooseningError::ShortsBlockerDisabled);
@@ -150,7 +162,7 @@ pub fn lock_day(lock: &Lock, now: DateTime<Utc>) -> Option<LockDay> {
 mod tests {
     use super::*;
     use crate::engine::{compute_blocked, tick};
-    use crate::models::{Now, State};
+    use crate::models::{AllowanceSite, Now, State};
     use chrono::{Duration, TimeZone};
 
     fn t0() -> DateTime<Utc> {
@@ -175,12 +187,28 @@ mod tests {
         list.retain(|s| s != site);
     }
 
+    fn remove_limit(settings: &mut Settings, site: &str) {
+        settings.allowance_sites.retain(|s| s.domain != site);
+    }
+
+    fn set_limit(settings: &mut Settings, domain: &str, daily_min: u32) {
+        let site = settings
+            .allowance_sites
+            .iter_mut()
+            .find(|s| s.domain == domain)
+            .unwrap();
+        site.daily_min = daily_min;
+    }
+
     // Allowed while locked
 
     #[test]
     fn may_add_an_allowance_site() {
         assert_eq!(
-            check(|s| s.allowance_sites.push("twitch.tv".to_string())),
+            check(|s| s.allowance_sites.push(AllowanceSite {
+                domain: "twitch.tv".to_string(),
+                daily_min: 60,
+            })),
             Ok(())
         );
     }
@@ -197,7 +225,7 @@ mod tests {
     fn may_move_a_site_from_allowance_to_always_blocked() {
         assert_eq!(
             check(|s| {
-                remove(&mut s.allowance_sites, "reddit.com");
+                remove_limit(s, "reddit.com");
                 s.always_blocked.push("reddit.com".to_string());
             }),
             Ok(())
@@ -206,7 +234,7 @@ mod tests {
 
     #[test]
     fn may_lower_the_allowance() {
-        assert_eq!(check(|s| s.daily_allowance_min = 5), Ok(()));
+        assert_eq!(check(|s| set_limit(s, "youtube.com", 5)), Ok(()));
     }
 
     // Forbidden while locked
@@ -214,7 +242,7 @@ mod tests {
     #[test]
     fn may_not_remove_an_allowance_site() {
         assert_eq!(
-            check(|s| remove(&mut s.allowance_sites, "reddit.com")),
+            check(|s| remove_limit(s, "reddit.com")),
             Err(LooseningError::RemovedSite("reddit.com".to_string()))
         );
     }
@@ -232,7 +260,10 @@ mod tests {
         assert_eq!(
             check(|s| {
                 remove(&mut s.always_blocked, "tiktok.com");
-                s.allowance_sites.push("tiktok.com".to_string());
+                s.allowance_sites.push(AllowanceSite {
+                    domain: "tiktok.com".to_string(),
+                    daily_min: 1,
+                });
             }),
             Err(LooseningError::MovedToAllowance("tiktok.com".to_string()))
         );
@@ -241,8 +272,8 @@ mod tests {
     #[test]
     fn may_not_raise_the_allowance() {
         assert_eq!(
-            check(|s| s.daily_allowance_min = 11),
-            Err(LooseningError::RaisedAllowance)
+            check(|s| set_limit(s, "youtube.com", 31)),
+            Err(LooseningError::RaisedAllowance("youtube.com".to_string()))
         );
     }
 
@@ -291,7 +322,6 @@ mod tests {
     fn anything_goes_without_a_lock() {
         let old = Settings::default();
         let new = Settings {
-            daily_allowance_min: 60,
             shorts_blocker_enabled: false,
             allowance_sites: vec![],
             always_blocked: vec![],
@@ -303,10 +333,8 @@ mod tests {
     #[test]
     fn anything_goes_once_the_lock_has_ended() {
         let old = Settings::default();
-        let new = Settings {
-            daily_allowance_min: 60,
-            ..old.clone()
-        };
+        let mut new = old.clone();
+        set_limit(&mut new, "youtube.com", 60);
         let end = locked().ends_at;
         assert_eq!(validate_change(&old, &new, Some(&locked()), end), Ok(()));
         assert!(!locked().is_active(end));
@@ -323,10 +351,8 @@ mod tests {
     #[test]
     fn bad_settings_are_rejected() {
         let d = Settings::default;
-        let high = Settings {
-            daily_allowance_min: 61,
-            ..d()
-        };
+        let mut high = d();
+        set_limit(&mut high, "youtube.com", 181);
         assert_eq!(
             validate_settings(&high),
             Err(InvalidSettings::AllowanceTooHigh)
@@ -347,11 +373,14 @@ mod tests {
             validate_settings(&target),
             Err(InvalidSettings::TargetTooHigh)
         );
-        let mut unnamed = d();
-        unnamed.study_blocks[0].name = "  ".to_string();
+        let mut twice = d();
+        twice.allowance_sites.push(AllowanceSite {
+            domain: "youtube.com".to_string(),
+            daily_min: 60,
+        });
         assert_eq!(
-            validate_settings(&unnamed),
-            Err(InvalidSettings::UnnamedBlock)
+            validate_settings(&twice),
+            Err(InvalidSettings::DuplicateSite("youtube.com".to_string()))
         );
     }
 
@@ -390,13 +419,16 @@ mod tests {
     fn clock_rollback_does_not_reset_the_allowance() {
         let now = Now::new(t0(), &Utc);
         let mut state = State::new(now.local_date);
-        state.today.allowance_used_sec = 600;
+        state
+            .today
+            .site_used_sec
+            .insert("youtube.com".to_string(), 1800);
 
         let rolled_back = t0() - Duration::days(30);
         let safe = Now::new(effective_now(rolled_back, t0()), &Utc);
         tick(&mut state, 1, safe, None);
 
-        assert_eq!(state.today.allowance_used_sec, 600);
+        assert_eq!(state.today.site_used("youtube.com"), 1800);
         let blocked = compute_blocked(&state, safe, true);
         assert!(blocked.hosts_domains.iter().any(|d| d == "youtube.com"));
     }
