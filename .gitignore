@@ -1,0 +1,18 @@
+# Rust
+target/
+# Node
+node_modules/
+dist/
+*.log
+# Tauri
+app/src-tauri/gen/
+# Env / local
+.env
+.env.*
+# Editor / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+# Claude Code local state
+.claude/
