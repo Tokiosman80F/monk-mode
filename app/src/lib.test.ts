@@ -9,17 +9,22 @@ import {
   formatClock,
   formatDuration,
   formatLeft,
-  greeting,
   isLocked,
+  nextPriority,
+  nextTask,
+  parseDuration,
+  plannedMin,
   PRIORITY_INFO,
+  quadrantOf,
   removeSubtask,
   siteLeftSec,
-  sitesByUse,
   sortTasks,
+  subtasksOverBy,
   SUBTASK_XP,
   toggleSubtask,
   toggleTask,
 } from "./lib";
+import { quoteFor } from "./quotes";
 import tasksRs from "../../crates/core/src/tasks.rs?raw";
 import { makeSnapshot } from "./test/fixtures";
 
@@ -50,12 +55,6 @@ describe("site limits", () => {
     expect(siteLeftSec(state, reddit)).toBe(0);
   });
 
-  it("puts the sites in use first", () => {
-    const { state } = makeSnapshot();
-    state.today.site_used_sec = { "reddit.com": 5 };
-    expect(sitesByUse(state)[0].domain).toBe("reddit.com");
-  });
-
   it.each([
     [0, "Closed"],
     [45, "0:45"],
@@ -69,17 +68,38 @@ describe("tasks", () => {
   const { tasks } = makeSnapshot().state;
   const [plain, withSteps] = tasks;
 
-  it("adds with the next free ID", () => {
-    const added = addTask(tasks, "New", "low");
-    expect(added[2]).toMatchObject({ id: 3, title: "New", priority: "low" });
-    expect(addTask([], "First", "high")[0].id).toBe(1);
+  it("adds with the next free ID, its time and quadrant", () => {
+    const added = addTask(tasks, "New", "low", "delegate", 45);
+    expect(added[2]).toMatchObject({
+      id: 3,
+      title: "New",
+      priority: "low",
+      quadrant: "delegate",
+      allocated_min: 45,
+    });
+    expect(addTask([], "First", "high", "do_first", 5)[0].id).toBe(1);
   });
 
-  it("sorts open before done, then by priority, then by age", () => {
-    const low = addTask(tasks, "Low", "low");
-    const done = low.map((t) => (t.id === 2 ? { ...t, done: true } : t));
-    expect(sortTasks(low).map((t) => t.id)).toEqual([2, 1, 3]);
+  it("sorts open before done, then by quadrant, priority and age", () => {
+    const more = addTask(tasks, "Low", "low", "schedule", 5);
+    const done = more.map((t) => (t.id === 2 ? { ...t, done: true } : t));
+    expect(sortTasks(more).map((t) => t.id)).toEqual([2, 1, 3]);
     expect(sortTasks(done).map((t) => t.id)).toEqual([1, 3, 2]);
+  });
+
+  it("next up skips finished tasks and anything to eliminate", () => {
+    expect(nextTask(tasks)?.id).toBe(2);
+    const drop = tasks.map((t) => ({ ...t, quadrant: "eliminate" as const }));
+    expect(nextTask(drop)).toBeUndefined();
+    expect(nextTask([{ ...plain, done: true }])).toBeUndefined();
+  });
+
+  it("adds up open time and warns when subtasks go over", () => {
+    expect(plannedMin(tasks)).toBe(270);
+    expect(plannedMin([{ ...plain, done: true }])).toBe(0);
+    expect(subtasksOverBy(withSteps)).toBe(0);
+    expect(subtasksOverBy({ ...withSteps, allocated_min: 20 })).toBe(10);
+    expect(subtasksOverBy({ ...withSteps, allocated_min: 0 })).toBe(0);
   });
 
   it("finishing a task finishes its subtasks, and undoing undoes them", () => {
@@ -100,7 +120,13 @@ describe("tasks", () => {
   it("a new subtask reopens a finished task", () => {
     const next = addSubtask(toggleTask(plain), "More");
     expect(next.done).toBe(false);
-    expect(next.subtasks[0]).toEqual({ id: 1, title: "More", done: false });
+    expect(next.subtasks[0]).toEqual({
+      id: 1,
+      title: "More",
+      done: false,
+      allocated_min: 0,
+    });
+    expect(addSubtask(plain, "Timed", 20).subtasks[0].allocated_min).toBe(20);
     expect(addSubtask(withSteps, "More").subtasks[2].id).toBe(3);
   });
 
@@ -121,11 +147,53 @@ describe("tasks", () => {
   });
 });
 
-it.each([
-  [8, "Good morning"],
-  [13, "Good afternoon"],
-  [20, "Good evening"],
-])("at %i it says %s", (hour, text) => expect(greeting(hour)).toBe(text));
+describe("parseDuration", () => {
+  it.each([
+    ["45m", 45],
+    ["45 min", 45],
+    ["3h", 180],
+    ["3 hours", 180],
+    ["1h 30m", 90],
+    ["1h30", null],
+    ["1.5h", 90],
+    ["1:30", 90],
+    ["3", 180],
+    ["1.5", 90],
+    ["45", 45],
+    ["24h", 1440],
+    ["25h", null],
+    ["0", null],
+    ["", null],
+    ["soon", null],
+    ["-1h", null],
+  ])("%s is %s", (text, minutes) => {
+    expect(parseDuration(text)).toBe(minutes);
+  });
+});
+
+describe("the matrix", () => {
+  it.each([
+    [true, true, "do_first"],
+    [false, true, "schedule"],
+    [true, false, "delegate"],
+    [false, false, "eliminate"],
+  ])("urgent %s, important %s is %s", (urgent, important, quadrant) => {
+    expect(quadrantOf(urgent, important)).toBe(quadrant);
+  });
+
+  it("priority cycles", () => {
+    expect(nextPriority("high")).toBe("medium");
+    expect(nextPriority("low")).toBe("high");
+  });
+});
+
+describe("quoteFor", () => {
+  it("stays the same all day and changes the next", () => {
+    const morning = quoteFor(new Date(2026, 10, 5, 6));
+    expect(quoteFor(new Date(2026, 10, 5, 23))).toEqual(morning);
+    expect(quoteFor(new Date(2026, 10, 6, 6))).not.toEqual(morning);
+  });
+});
 
 describe("isLocked", () => {
   const lock = {

@@ -372,6 +372,8 @@ mod tests {
             priority: monk_core::models::Priority::High,
             done: false,
             done_on: None,
+            quadrant: monk_core::models::Quadrant::DoFirst,
+            allocated_min: 180,
             subtasks: vec![],
         };
         db.save_tasks(std::slice::from_ref(&task)).unwrap();

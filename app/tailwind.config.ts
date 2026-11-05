@@ -1,29 +1,20 @@
 import daisyui from "daisyui";
 import plugin from "tailwindcss/plugin";
-import { daisyThemes } from "./src/theme";
+import { daisyThemes, quadrantColors } from "./src/theme";
 
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
+      colors: quadrantColors,
       fontFamily: {
-        sans: ["Inter", "sans-serif"],
-        display: ['"Bricolage Grotesque"', "sans-serif"],
-      },
-      dropShadow: {
-        glow: "0 0 6px rgb(255 178 36 / 0.55)",
-      },
-      boxShadow: {
-        glow: "0 0 18px rgb(255 178 36 / 0.35)",
+        sans: ['"Inter Tight"', "sans-serif"],
+        display: ['"Inter Tight"', "sans-serif"],
       },
       keyframes: {
         breathe: {
           "0%, 100%": { transform: "scale(1)", opacity: "0.85" },
           "50%": { transform: "scale(1.04)", opacity: "1" },
-        },
-        "fade-up": {
-          from: { transform: "translateY(6px)", opacity: "0" },
-          to: { transform: "translateY(0)", opacity: "1" },
         },
         "fade-in": {
           from: { opacity: "0" },
@@ -38,7 +29,6 @@ export default {
       },
       animation: {
         breathe: "breathe 4s ease-in-out infinite",
-        "fade-up": "fade-up 250ms ease-out both",
         "fade-in": "fade-in 150ms ease-out both",
         "xp-pop": "xp-pop 1500ms ease-out both",
       },
@@ -48,7 +38,7 @@ export default {
     daisyui,
     plugin(({ addBase }) =>
       addBase({
-        body: { fontSize: "14px", lineHeight: "1.55" },
+        body: { fontSize: "14px", lineHeight: "1.5" },
         ".btn": { transitionDuration: "150ms" },
         ".progress::-webkit-progress-value": {
           transition: "inline-size 600ms ease-out, width 600ms ease-out",

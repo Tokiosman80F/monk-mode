@@ -46,18 +46,16 @@ export default function Rewards() {
 
       <Card>
         <div className="flex flex-wrap items-center gap-6">
-          <span className="flex h-24 w-24 shrink-0 items-center justify-center rounded-full bg-primary font-display text-5xl font-bold text-primary-content shadow-glow">
+          <span className="flex h-24 w-24 shrink-0 items-center justify-center rounded-full bg-accent font-display text-5xl font-light text-accent-content">
             {level}
           </span>
           <div className="min-w-48 flex-1">
-            <h2 className="font-display text-2xl font-semibold">
-              Level {level}
-            </h2>
+            <h2 className="font-display text-2xl font-medium">Level {level}</h2>
             <p className="mb-2 text-sm text-neutral">
               {next - into} XP to level {level + 1}. {xp} XP in total.
             </p>
             <progress
-              className="progress progress-primary w-full"
+              className="progress progress-accent w-full"
               aria-label="XP to the next level"
               value={into}
               max={Math.max(next, 1)}
@@ -76,14 +74,14 @@ export default function Rewards() {
                   key={id}
                   data-testid={earned ? "earned" : "unearned"}
                   className={`flex flex-col items-center gap-2 rounded-box border p-4 text-center ${
-                    earned ? "border-primary shadow-glow" : "border-base-300"
+                    earned ? "border-accent" : "border-base-300"
                   }`}
                 >
                   {earned ? (
                     <Icon
                       size={28}
                       aria-hidden="true"
-                      className="text-primary"
+                      className="text-accent"
                     />
                   ) : (
                     <LockIcon
@@ -105,7 +103,7 @@ export default function Rewards() {
             {EARNING.map(([what, xpText]) => (
               <li key={what} className="flex justify-between gap-4">
                 <span>{what}</span>
-                <span className="font-medium text-primary">{xpText}</span>
+                <span className="font-medium text-accent">{xpText}</span>
               </li>
             ))}
           </ul>

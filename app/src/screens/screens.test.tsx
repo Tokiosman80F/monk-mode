@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../api";
@@ -45,61 +51,43 @@ function savedSettings() {
   return vi.mocked(api.updateSettings).mock.calls[0][0];
 }
 
-function renderToday() {
-  return render(
-    <MemoryRouter>
-      <Today />
-    </MemoryRouter>,
-  );
-}
-
 function savedTasks() {
   return vi.mocked(api.updateTasks).mock.calls[0][0];
 }
 
+function fillComposer(title: string, time: string) {
+  fireEvent.change(screen.getByLabelText("New task"), {
+    target: { value: title },
+  });
+  fireEvent.change(screen.getByLabelText("Time for the new task"), {
+    target: { value: time },
+  });
+}
+
 describe("Today", () => {
-  it("shows a ring per site, tasks, level, streak and the start button", () => {
+  it("shows the date, a quote, tasks, level, streak and focus", () => {
     setStore();
-    renderToday();
-    expect(screen.getByLabelText("youtube.com: 28m")).toBeInTheDocument();
-    expect(screen.getByLabelText("reddit.com: 10m")).toBeInTheDocument();
+    render(<Today />);
+    const year = String(new Date().getFullYear());
+    expect(
+      screen.getByRole("heading", { level: 1, name: new RegExp(year) }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("blockquote")).toBeInTheDocument();
     expect(screen.getByLabelText("Finish Ship the page")).toBeInTheDocument();
     expect(screen.getByLabelText("Level 3")).toBeInTheDocument();
     expect(screen.getByText("20 / 300 XP")).toBeInTheDocument();
     expect(screen.getByText("4 days")).toBeInTheDocument();
     expect(screen.getByText("1h 40m / 11h")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /Start focus/ }),
+      screen.getByText("4h 30m planned in open tasks"),
     ).toBeInTheDocument();
   });
 
-  it("shows every site as closed during focus", () => {
-    setStore(({ state }) => {
-      state.pomodoro = {
-        phase: "focus",
-        task_title: "React",
-        started_at: "2026-11-05T09:00:00Z",
-        remaining_sec: 60,
-      };
-    });
-    renderToday();
-    expect(screen.getByLabelText("youtube.com: Closed")).toBeInTheDocument();
-  });
-
-  it("links to the rest when there are more sites than rings", () => {
-    setStore(({ state }) => {
-      for (let i = 0; i < 6; i++) {
-        state.settings.allowance_sites.push({
-          domain: `site${i}.com`,
-          daily_min: 10,
-        });
-      }
-    });
-    renderToday();
-    expect(
-      screen.getByRole("link", { name: "See all 8 limits" }),
-    ).toBeVisible();
-    expect(screen.getAllByRole("img", { name: /: 10m$/ })).toHaveLength(5);
+  it("has no time-left section", () => {
+    setStore();
+    render(<Today />);
+    expect(screen.queryByText("Time left")).not.toBeInTheDocument();
+    expect(screen.queryByText("youtube")).not.toBeInTheDocument();
   });
 
   it("shows the day counter while locked", () => {
@@ -107,15 +95,15 @@ describe("Today", () => {
       state.lock = FUTURE_LOCK;
       state.lock_day = { day: 12, total: 90 };
     });
-    renderToday();
-    expect(screen.getByText(/Day 12 of 90. Keep going./)).toBeInTheDocument();
+    render(<Today />);
+    expect(screen.getByText("Day 12 of 90")).toBeInTheDocument();
   });
 
   it("explains a browser without the extension", () => {
     setStore((s) => {
       s.missing_browsers = ["msedge.exe"];
     });
-    renderToday();
+    render(<Today />);
     expect(screen.getByRole("status")).toHaveTextContent(
       "Edge is open without the extension",
     );
@@ -123,23 +111,73 @@ describe("Today", () => {
 });
 
 describe("Tasks", () => {
-  it("adds a task with a chosen priority", async () => {
+  it("shows all four quadrants with tasks in the right one", () => {
     setStore();
     render(<Tasks />);
-    fireEvent.change(screen.getByLabelText("New task"), {
-      target: { value: "  Read docs  " },
-    });
-    fireEvent.change(screen.getByLabelText("New task priority"), {
-      target: { value: "high" },
-    });
+    const doFirst = screen.getByRole("region", { name: "Do first" });
+    expect(within(doFirst).getByText("Ship the page")).toBeInTheDocument();
+    expect(
+      within(doFirst).getByRole("button", {
+        name: /^Time for Ship the page: 1h 30m/,
+      }),
+    ).toBeInTheDocument();
+    const schedule = screen.getByRole("region", { name: "Schedule" });
+    expect(within(schedule).getByText("Learn hooks")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Delegate" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "Eliminate" })).toBeVisible();
+  });
+
+  it("adds a task with its time, and the quadrant sets the priority", async () => {
+    setStore();
+    render(<Tasks />);
+    fillComposer("  Read docs  ", "3h");
+    fireEvent.click(screen.getByRole("button", { name: "Urgent" }));
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
     await waitFor(() =>
       expect(savedTasks()[2]).toMatchObject({
         id: 3,
         title: "Read docs",
+        allocated_min: 180,
+        quadrant: "do_first",
         priority: "high",
       }),
     );
+  });
+
+  it("each urgent and important answer picks its quadrant", async () => {
+    setStore();
+    render(<Tasks />);
+    fillComposer("Reply", "10m");
+    fireEvent.click(screen.getByRole("button", { name: "Urgent" }));
+    fireEvent.click(screen.getByRole("button", { name: "Important" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() =>
+      expect(savedTasks()[2]).toMatchObject({
+        quadrant: "delegate",
+        priority: "low",
+      }),
+    );
+  });
+
+  it("lets the priority be changed from what the quadrant suggests", async () => {
+    setStore();
+    render(<Tasks />);
+    fillComposer("Read", "1h");
+    fireEvent.click(screen.getByLabelText(/^New task priority: Medium/));
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(savedTasks()[2].priority).toBe("low"));
+  });
+
+  it("needs a time for a new task", () => {
+    setStore();
+    render(<Tasks />);
+    fillComposer("Read", "");
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("How long");
+    fillComposer("Read", "soon");
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("How long");
+    expect(api.updateTasks).not.toHaveBeenCalled();
   });
 
   it("skips a blank task", () => {
@@ -164,16 +202,38 @@ describe("Tasks", () => {
     await waitFor(() => expect(savedTasks()[1].done).toBe(true));
   });
 
-  it("changes priority", async () => {
+  it("cycles a task's priority", async () => {
     setStore();
     render(<Tasks />);
-    fireEvent.change(screen.getByLabelText("Priority of Learn hooks"), {
-      target: { value: "low" },
-    });
+    fireEvent.click(screen.getByLabelText(/^Priority of Learn hooks/));
     await waitFor(() => expect(savedTasks()[0].priority).toBe("low"));
   });
 
-  it("opens subtasks, adds, finishes and removes them", async () => {
+  it("shows time spent against the time set, and edits it", async () => {
+    setStore();
+    render(<Tasks />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /^Time for Learn hooks: 1h \/ 3h/ }),
+    );
+    const field = screen.getByLabelText("Time for Learn hooks");
+    fireEvent.change(field, { target: { value: "2h 30m" } });
+    fireEvent.blur(field);
+    await waitFor(() => expect(savedTasks()[0].allocated_min).toBe(150));
+  });
+
+  it("ignores a time it can't read", () => {
+    setStore();
+    render(<Tasks />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /^Time for Learn hooks/ }),
+    );
+    const field = screen.getByLabelText("Time for Learn hooks");
+    fireEvent.change(field, { target: { value: "soon" } });
+    fireEvent.blur(field);
+    expect(api.updateTasks).not.toHaveBeenCalled();
+  });
+
+  it("opens subtasks, adds one with time, finishes and removes them", async () => {
     setStore();
     render(<Tasks />);
     expect(screen.getByText("1/2")).toBeInTheDocument();
@@ -186,11 +246,18 @@ describe("Tasks", () => {
     fireEvent.change(screen.getByLabelText("Add a subtask to Ship the page"), {
       target: { value: "Deploy it" },
     });
+    fireEvent.change(
+      screen.getByLabelText("Time for the new subtask of Ship the page"),
+      { target: { value: "20m" } },
+    );
     fireEvent.submit(
       screen.getByLabelText("Add a subtask to Ship the page").closest("form")!,
     );
     await waitFor(() =>
-      expect(savedTasks()[1].subtasks[2].title).toBe("Deploy it"),
+      expect(savedTasks()[1].subtasks[2]).toMatchObject({
+        title: "Deploy it",
+        allocated_min: 20,
+      }),
     );
 
     vi.mocked(api.updateTasks).mockClear();
@@ -200,6 +267,52 @@ describe("Tasks", () => {
     vi.mocked(api.updateTasks).mockClear();
     fireEvent.click(screen.getByRole("button", { name: "Remove Write it" }));
     await waitFor(() => expect(savedTasks()[1].subtasks).toHaveLength(1));
+  });
+
+  it("edits a subtask's time", async () => {
+    setStore();
+    render(<Tasks />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show subtasks of Ship the page" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Time for Test it/ }));
+    const field = screen.getByLabelText("Time for Test it");
+    fireEvent.change(field, { target: { value: "45m" } });
+    fireEvent.blur(field);
+    await waitFor(() =>
+      expect(savedTasks()[1].subtasks[1].allocated_min).toBe(45),
+    );
+  });
+
+  it("warns when subtasks go over the task's time", () => {
+    setStore(({ state }) => {
+      state.tasks[1].allocated_min = 10;
+    });
+    render(<Tasks />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show subtasks of Ship the page" }),
+    );
+    expect(screen.getByText(/20m more than this task/)).toBeInTheDocument();
+  });
+
+  it("moves a task by dragging it to another quadrant", async () => {
+    setStore();
+    render(<Tasks />);
+    const data = { getData: () => "1" };
+    fireEvent.drop(screen.getByRole("region", { name: "Delegate" }), {
+      dataTransfer: data,
+    });
+    await waitFor(() => expect(savedTasks()[0].quadrant).toBe("delegate"));
+  });
+
+  it("moves a task with buttons too", async () => {
+    setStore();
+    render(<Tasks />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show subtasks of Learn hooks" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Eliminate" }));
+    await waitFor(() => expect(savedTasks()[0].quadrant).toBe("eliminate"));
   });
 
   it("starts a focus session on a task, unless one is running", async () => {
@@ -217,14 +330,6 @@ describe("Tasks", () => {
     expect(
       screen.getByRole("button", { name: "Focus on Learn hooks" }),
     ).toBeDisabled();
-  });
-
-  it("invites a first task when the list is empty", () => {
-    setStore(({ state }) => {
-      state.tasks = [];
-    });
-    render(<Tasks />);
-    expect(screen.getByText(/Add your first task/)).toBeInTheDocument();
   });
 
   it("shows a refusal from the service", async () => {
@@ -251,32 +356,21 @@ describe("Rewards", () => {
 });
 
 describe("Pomodoro", () => {
-  it("starts on the most important open task by default", async () => {
+  it("starts on the most pressing open task", async () => {
     setStore();
     render(<Pomodoro />);
+    expect(screen.getByText(/Ship the page/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Start focus/ }));
     await waitFor(() => expect(api.startPomodoro).toHaveBeenCalledWith(2));
   });
 
-  it("starts on a chosen task, or on none", async () => {
-    setStore();
-    render(<Pomodoro />);
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "1" } });
-    fireEvent.click(screen.getByRole("button", { name: /Start focus/ }));
-    await waitFor(() => expect(api.startPomodoro).toHaveBeenCalledWith(1));
-
-    vi.mocked(api.startPomodoro).mockClear();
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "" } });
-    fireEvent.click(screen.getByRole("button", { name: /Start focus/ }));
-    await waitFor(() => expect(api.startPomodoro).toHaveBeenCalledWith(null));
-  });
-
-  it("works with no tasks at all", async () => {
+  it("offers free focus, and needs a task for the main button", async () => {
     setStore(({ state }) => {
       state.tasks = [];
     });
     render(<Pomodoro />);
-    fireEvent.click(screen.getByRole("button", { name: /Start focus/ }));
+    expect(screen.getByRole("button", { name: /Start focus/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Free focus" }));
     await waitFor(() => expect(api.startPomodoro).toHaveBeenCalledWith(null));
   });
 

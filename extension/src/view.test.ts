@@ -27,10 +27,11 @@ describe("streakText", () => {
   });
 });
 
-it("topTasks leaves out finished ones and puts high priority first", () => {
+it("topTasks puts the most pressing first and leaves out finished and dropped ones", () => {
   const task = (
     id: number,
     priority: Task["priority"],
+    quadrant: Task["quadrant"],
     done = false,
   ): Task => ({
     id,
@@ -38,14 +39,17 @@ it("topTasks leaves out finished ones and puts high priority first", () => {
     priority,
     done,
     done_on: null,
+    quadrant,
+    allocated_min: 0,
     subtasks: [],
   });
   const tasks = [
-    task(1, "low"),
-    task(2, "high", true),
-    task(3, "high"),
-    task(4, "medium"),
+    task(1, "high", "schedule"),
+    task(2, "high", "do_first", true),
+    task(3, "low", "do_first"),
+    task(4, "medium", "schedule"),
+    task(5, "high", "eliminate"),
   ];
-  expect(topTasks(tasks, 2).map((t) => t.id)).toEqual([3, 4]);
+  expect(topTasks(tasks, 2).map((t) => t.id)).toEqual([3, 1]);
   expect(topTasks(tasks, 9)).toHaveLength(3);
 });

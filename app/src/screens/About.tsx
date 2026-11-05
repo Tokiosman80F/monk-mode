@@ -8,7 +8,7 @@ export default function About() {
         <div className="flex items-center gap-4">
           <Logo className="w-12" />
           <div>
-            <p className="font-display text-xl font-semibold">Monk Mode</p>
+            <p className="font-display text-xl font-medium">Monk Mode</p>
             <p className="text-sm text-neutral">Free and open source.</p>
           </div>
         </div>

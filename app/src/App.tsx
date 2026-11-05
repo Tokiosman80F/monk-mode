@@ -51,20 +51,20 @@ function NavItem({
   Icon: LucideIcon;
 }) {
   return (
-    <li className="tooltip tooltip-right" data-tip={label}>
+    <li>
       <NavLink
         to={to}
         end
-        aria-label={label}
         className={({ isActive }) =>
-          `flex h-11 w-11 items-center justify-center rounded-btn transition-colors duration-150 ${
+          `flex w-16 flex-col items-center gap-1 rounded-btn py-2 text-[11px] transition-colors duration-150 ${
             isActive
-              ? "active bg-primary text-primary-content shadow-glow"
-              : "text-neutral hover:bg-base-300 hover:text-base-content"
+              ? "active bg-base-300 text-base-content"
+              : "text-neutral hover:text-base-content"
           }`
         }
       >
-        <Icon size={20} aria-hidden="true" />
+        <Icon size={19} aria-hidden="true" />
+        {label}
       </NavLink>
     </li>
   );
@@ -79,14 +79,14 @@ function Layout() {
 
   return (
     <div className="flex h-screen bg-base-100 text-base-content">
-      <aside className="z-10 flex w-[72px] shrink-0 flex-col items-center gap-6 border-r border-base-300 bg-base-200 py-4">
+      <aside className="z-10 flex w-[84px] shrink-0 flex-col items-center gap-5 border-r border-base-300 py-4">
         <Logo breathing={focusing} className="w-9" />
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-1">
           {NAV.map(([to, label, Icon]) => (
             <NavItem key={to} to={to} label={label} Icon={Icon} />
           ))}
         </ul>
-        <ul className="mt-auto flex flex-col gap-2">
+        <ul className="mt-auto flex flex-col gap-1">
           {NAV_BOTTOM.map(([to, label, Icon]) => (
             <NavItem key={to} to={to} label={label} Icon={Icon} />
           ))}

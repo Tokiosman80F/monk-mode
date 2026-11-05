@@ -87,8 +87,10 @@ Earlier builds failed T5 (`sc stop` ended the service during a lock) and a reins
 
 ## New in version 1.2
 
-| #   | Do this                                                                                  | Expected                                                                                 |
-| --- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| N1  | On Limits, set a site to 1 minute and use it until it closes. Then open a different site | Only the first site closes. Today shows its ring as Closed and the other ring unchanged  |
-| N2  | Add a task with two subtasks, finish both, then restart the service                      | The task finishes itself, XP rises by its priority plus 10, and all of it is still there |
-| N3  | Leave one task open and one finished, and wait past midnight                             | The open one carries over and the finished one is gone. XP stays                         |
+| #   | Do this                                                                                   | Expected                                                                                 |
+| --- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| N1  | On Limits, set a site to 1 minute and use it until it closes. Then open a different site  | Only the first site closes. Today shows its ring as Closed and the other ring unchanged  |
+| N2  | Add a task with two subtasks, finish both, then restart the service                       | The task finishes itself, XP rises by its priority plus 10, and all of it is still there |
+| N3  | Leave one task open and one finished, and wait past midnight                              | The open one carries over and the finished one is gone. XP stays                         |
+| N4  | Add a 3h urgent and important task with a 30m subtask, then focus on it for a few minutes | It lands in Do first, and its time reads like `5m / 3h`                                  |
+| N5  | Drag a task to another quadrant, then restart the service                                 | It stays where it was dropped, with its time                                             |

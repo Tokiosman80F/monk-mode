@@ -175,7 +175,7 @@ export default function Setup() {
       <div className="mx-auto flex max-w-[760px] flex-col gap-6 p-6">
         <div className="flex items-center gap-2">
           <Logo />
-          <span className="font-display text-xl font-semibold">Monk Mode</span>
+          <span className="font-display text-xl font-medium">Monk Mode</span>
         </div>
         <ul className="steps">
           {STEPS.map((label, i) => (

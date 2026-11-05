@@ -1,6 +1,6 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import logo from "./assets/logo.svg?raw";
-import { formatLeft } from "./lib";
+import { quoteFor } from "./quotes";
 import type { Progress } from "./types/Progress";
 
 export function Logo({
@@ -12,7 +12,7 @@ export function Logo({
 }) {
   return (
     <span
-      className={`inline-block text-primary ${className} ${breathing ? "animate-breathe" : ""}`}
+      className={`inline-block text-secondary ${className} ${breathing ? "animate-breathe" : ""}`}
       role="img"
       aria-label="Monk Mode logo"
       dangerouslySetInnerHTML={{ __html: logo }}
@@ -35,7 +35,7 @@ export function Card({
         {(title || action) && (
           <div className="flex items-center justify-between gap-4">
             {title && (
-              <h2 className="font-display text-lg font-semibold">{title}</h2>
+              <h2 className="font-display text-lg font-medium">{title}</h2>
             )}
             {action}
           </div>
@@ -48,7 +48,7 @@ export function Card({
 
 export function PageTitle({ children }: { children: ReactNode }) {
   return (
-    <h1 className="font-display text-3xl font-semibold tracking-tight">
+    <h1 className="font-display text-3xl font-light tracking-tight">
       {children}
     </h1>
   );
@@ -63,68 +63,41 @@ export function ErrorNote({ message }: { message: string | null }) {
   );
 }
 
-const RING_RADIUS = 26;
-const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
-const RING_WARN_SEC = 120;
+/** Today's date and the time, with the day's quote beside them. */
+export function DayHeader() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const quote = quoteFor(now);
 
-/** Time left on one site's limit. The ring empties as the time goes. */
-export function LimitRing({
-  domain,
-  leftSec,
-  limitSec,
-  closed = false,
-}: {
-  domain: string;
-  leftSec: number;
-  limitSec: number;
-  closed?: boolean;
-}) {
-  const share = limitSec > 0 ? leftSec / limitSec : 0;
-  const text = closed ? "Closed" : formatLeft(leftSec);
-  const tone = leftSec <= RING_WARN_SEC ? "stroke-error" : "stroke-primary";
-  const name = domain.replace(/\.com$/, "");
   return (
-    <div
-      role="img"
-      aria-label={`${domain}: ${text}`}
-      className="flex min-w-0 flex-col items-center gap-1"
-    >
-      <div className="relative h-[68px] w-[68px]">
-        <svg
-          viewBox="0 0 64 64"
-          className="h-full w-full -rotate-90 overflow-visible"
-        >
-          <circle
-            cx={32}
-            cy={32}
-            r={RING_RADIUS}
-            fill="none"
-            strokeWidth={5}
-            className="stroke-base-300"
-          />
-          <circle
-            cx={32}
-            cy={32}
-            r={RING_RADIUS}
-            fill="none"
-            strokeWidth={5}
-            strokeLinecap="round"
-            strokeDasharray={RING_LENGTH}
-            strokeDashoffset={RING_LENGTH * (1 - (closed ? 0 : share))}
-            className={`${tone} drop-shadow-glow transition-[stroke-dashoffset] duration-500`}
-          />
-        </svg>
-        <span
-          className={`absolute inset-0 flex items-center justify-center font-display font-semibold ${
-            text === "Closed" ? "text-[11px] text-neutral" : "text-sm"
-          }`}
-        >
-          {text}
-        </span>
+    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-8 gap-y-2">
+      <div>
+        <p className="font-display text-5xl font-light tabular-nums leading-none tracking-tight">
+          {now.toLocaleTimeString(undefined, {
+            hour: "numeric",
+            minute: "2-digit",
+          })}
+        </p>
+        <h1 className="mt-2 text-neutral">
+          {now.toLocaleDateString(undefined, {
+            weekday: "long",
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+          })}
+        </h1>
       </div>
-      <span className="w-full truncate text-center text-xs text-neutral">
-        {name}
-      </span>
+      <figure className="max-w-xs">
+        <blockquote className="text-sm font-medium leading-snug">
+          {quote.text}
+        </blockquote>
+        <figcaption className="mt-1 text-xs text-neutral">
+          {quote.by}
+        </figcaption>
+      </figure>
     </div>
   );
 }
@@ -132,10 +105,10 @@ export function LimitRing({
 export function LevelBar({ progress }: { progress: Progress }) {
   const { level, level_xp: into, next_level_xp: next } = progress;
   return (
-    <div className="flex w-56 items-center gap-3">
+    <div className="flex w-52 items-center gap-3">
       <span
         key={level}
-        className="flex h-10 w-10 shrink-0 animate-fade-up items-center justify-center rounded-full bg-primary font-display text-base font-bold text-primary-content shadow-glow"
+        className="flex h-10 w-10 shrink-0 animate-fade-in items-center justify-center rounded-full bg-accent font-display text-base font-medium text-accent-content"
         aria-label={`Level ${level}`}
       >
         {level}
@@ -148,7 +121,7 @@ export function LevelBar({ progress }: { progress: Progress }) {
           </span>
         </div>
         <progress
-          className="progress progress-primary h-2 w-full"
+          className="progress progress-accent h-1.5 w-full"
           aria-label="XP to the next level"
           value={into}
           max={Math.max(next, 1)}

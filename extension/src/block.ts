@@ -1,6 +1,6 @@
-import "@fontsource/inter/latin-400.css";
-import "@fontsource/inter/latin-600.css";
-import "@fontsource/bricolage-grotesque/latin-600.css";
+import "@fontsource/inter-tight/latin-300.css";
+import "@fontsource/inter-tight/latin-400.css";
+import "@fontsource/inter-tight/latin-500.css";
 import "./block.css";
 import logo from "../../app/src/assets/logo.svg?raw";
 import { STATE_KEY, formatDuration, streakText, topTasks } from "./view";
@@ -24,7 +24,7 @@ function focusRow(focusSec: number, targetMin: number): HTMLElement {
   label.append(name, amount);
 
   const bar = document.createElement("progress");
-  bar.className = "progress progress-primary w-full";
+  bar.className = "progress progress-secondary w-full";
   bar.max = Math.max(targetMin * 60, 1);
   bar.value = focusSec;
 

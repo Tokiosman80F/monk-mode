@@ -50,7 +50,7 @@ function Bars({
               height={height}
               rx={3}
               className={
-                day.focusSec >= targetSec ? "fill-primary" : "fill-neutral/40"
+                day.focusSec >= targetSec ? "fill-secondary" : "fill-neutral/40"
               }
             >
               <title>{`${day.date}: ${formatDuration(day.focusSec)}`}</title>
@@ -115,7 +115,7 @@ export default function StatsScreen() {
             />
             <p className="text-sm text-neutral">
               The dashed line is your daily target. Days that reach it show in
-              saffron.
+              green.
             </p>
           </Card>
           <Card title="Focus by task">

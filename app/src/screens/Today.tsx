@@ -1,43 +1,59 @@
 import { Flame } from "lucide-react";
-import { NavLink } from "react-router-dom";
-import {
-  browserName,
-  greeting,
-  formatDuration,
-  siteLeftSec,
-  sitesByUse,
-  totalFocusSec,
-} from "../lib";
+import { browserName, formatDuration, plannedMin, totalFocusSec } from "../lib";
 import { useStore } from "../store";
-import { Card, LevelBar, LimitRing, PageTitle } from "../ui";
+import { DayHeader, LevelBar, PageTitle } from "../ui";
 import Pomodoro from "./Pomodoro";
 import Tasks from "./Tasks";
-
-const RINGS_SHOWN = 6;
 
 export default function Today() {
   const snapshot = useStore((s) => s.snapshot);
   if (!snapshot) return <PageTitle>Today</PageTitle>;
 
   const { state, missing_browsers: missing } = snapshot;
-  const sites = sitesByUse(state);
-  const hidden = sites.length - RINGS_SHOWN;
-  const focusing = state.pomodoro.phase === "focus";
   const focusSec = totalFocusSec(state.today);
   const targetSec = state.settings.daily_focus_target_min * 60;
   const { streak_days: streak, lock_day: lockDay } = state;
+  const planned = plannedMin(state.tasks);
 
   return (
     <>
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <PageTitle>Today</PageTitle>
-          <p className="text-neutral">
-            {greeting(new Date().getHours())}.
-            {lockDay && ` Day ${lockDay.day} of ${lockDay.total}. Keep going.`}
-          </p>
+      <header className="flex flex-wrap items-center justify-between gap-6">
+        <DayHeader />
+        <div className="flex flex-col gap-3">
+          <LevelBar progress={state.progress} />
+          <div className="flex items-center gap-2 text-sm">
+            <Flame
+              size={18}
+              aria-hidden="true"
+              className={streak > 0 ? "text-accent" : "text-neutral"}
+            />
+            <span>
+              {streak} {streak === 1 ? "day" : "days"}
+            </span>
+            {lockDay && (
+              <span className="text-neutral">
+                Day {lockDay.day} of {lockDay.total}
+              </span>
+            )}
+          </div>
+          <div>
+            <div className="mb-1 flex justify-between gap-4 text-xs text-neutral">
+              <span>Focus today</span>
+              <span>
+                {formatDuration(focusSec)} / {formatDuration(targetSec)}
+              </span>
+            </div>
+            <progress
+              className="progress progress-secondary h-1.5 w-full"
+              aria-label="Focus today"
+              value={focusSec}
+              max={Math.max(targetSec, 1)}
+            />
+            <p className="mt-1 text-xs text-neutral">
+              {formatDuration(planned * 60)} planned in open tasks
+            </p>
+          </div>
         </div>
-        <LevelBar progress={state.progress} />
       </header>
 
       {missing.length > 0 && (
@@ -49,64 +65,7 @@ export default function Today() {
       )}
 
       <Pomodoro />
-
-      <div className="grid items-start gap-5 md:grid-cols-[minmax(0,5fr)_minmax(0,8fr)]">
-        <div className="flex flex-col gap-5">
-          <Card title="Time left">
-            <div className="grid grid-cols-3 gap-x-2 gap-y-4">
-              {sites.slice(0, RINGS_SHOWN).map((site) => (
-                <LimitRing
-                  key={site.domain}
-                  domain={site.domain}
-                  leftSec={siteLeftSec(state, site)}
-                  limitSec={site.daily_min * 60}
-                  closed={focusing}
-                />
-              ))}
-            </div>
-            {hidden > 0 && (
-              <NavLink to="/limits" className="link text-sm text-neutral">
-                See all {sites.length} limits
-              </NavLink>
-            )}
-          </Card>
-
-          <Card>
-            <div className="flex items-center gap-3">
-              <Flame
-                size={28}
-                aria-hidden="true"
-                className={streak > 0 ? "text-primary" : "text-neutral"}
-              />
-              <div>
-                <p className="font-display text-xl font-semibold">
-                  {streak} {streak === 1 ? "day" : "days"}
-                </p>
-                <p className="text-xs text-neutral">Your streak</p>
-              </div>
-            </div>
-            <div>
-              <div className="mb-1 flex justify-between text-sm">
-                <span>Focus today</span>
-                <span className="text-neutral">
-                  {formatDuration(focusSec)} / {formatDuration(targetSec)}
-                </span>
-              </div>
-              <progress
-                className="progress progress-primary w-full"
-                aria-label="Focus today"
-                value={focusSec}
-                max={Math.max(targetSec, 1)}
-              />
-            </div>
-            <p className="text-sm text-neutral">
-              {state.progress.today_xp} XP earned today
-            </p>
-          </Card>
-        </div>
-
-        <Tasks />
-      </div>
+      <Tasks />
     </>
   );
 }

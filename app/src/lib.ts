@@ -1,6 +1,7 @@
 import type { AllowanceSite } from "./types/AllowanceSite";
 import type { Lock } from "./types/Lock";
 import type { Priority } from "./types/Priority";
+import type { Quadrant } from "./types/Quadrant";
 import type { State } from "./types/State";
 import type { Task } from "./types/Task";
 import type { UsageDay } from "./types/UsageDay";
@@ -49,23 +50,11 @@ export function formatLeft(leftSec: number): string {
   return leftSec < 60 ? formatClock(leftSec) : formatDuration(leftSec);
 }
 
-/** Sites in use first, since those are the ones running out. */
-export function sitesByUse(state: State): AllowanceSite[] {
-  return [...state.settings.allowance_sites].sort(
-    (a, b) => siteUsedSec(state, b.domain) - siteUsedSec(state, a.domain),
-  );
-}
-
 export function totalFocusSec(day: UsageDay): number {
   return Object.values(day.focus_sec).reduce<number>(
     (sum, sec) => sum + (sec ?? 0),
     0,
   );
-}
-
-export function greeting(hour: number): string {
-  if (hour < 12) return "Good morning";
-  return hour < 18 ? "Good afternoon" : "Good evening";
 }
 
 export const PRIORITIES: Priority[] = ["high", "medium", "low"];
@@ -76,11 +65,119 @@ export const PRIORITY_INFO: Record<
   { label: string; xp: number; tone: string }
 > = {
   high: { label: "High", xp: 50, tone: "text-error" },
-  medium: { label: "Medium", xp: 30, tone: "text-primary" },
+  medium: { label: "Medium", xp: 30, tone: "text-accent" },
   low: { label: "Low", xp: 15, tone: "text-neutral" },
 };
 
 export const SUBTASK_XP = 5;
+
+export function nextPriority(priority: Priority): Priority {
+  return PRIORITIES[(PRIORITIES.indexOf(priority) + 1) % PRIORITIES.length];
+}
+
+/** In the order they're worked through. */
+export const QUADRANTS: Quadrant[] = [
+  "do_first",
+  "schedule",
+  "delegate",
+  "eliminate",
+];
+
+export const QUADRANT_INFO: Record<
+  Quadrant,
+  {
+    name: string;
+    advice: string;
+    empty: string;
+    priority: Priority;
+    text: string;
+    border: string;
+  }
+> = {
+  do_first: {
+    name: "Do first",
+    advice: "Urgent and important. Do these today.",
+    empty: "Nothing on fire. Good.",
+    priority: "high",
+    text: "text-q-do",
+    border: "border-q-do",
+  },
+  schedule: {
+    name: "Schedule",
+    advice: "Important, not urgent. Give these real time.",
+    empty: "This is where the deep work goes.",
+    priority: "medium",
+    text: "text-q-schedule",
+    border: "border-q-schedule",
+  },
+  delegate: {
+    name: "Delegate",
+    advice: "Urgent, not important. Hand off if you can.",
+    empty: "Nothing to hand off.",
+    priority: "low",
+    text: "text-q-delegate",
+    border: "border-q-delegate",
+  },
+  eliminate: {
+    name: "Eliminate",
+    advice: "Neither. Think about dropping these.",
+    empty: "Nothing to drop.",
+    priority: "low",
+    text: "text-q-drop",
+    border: "border-q-drop",
+  },
+};
+
+export function quadrantOf(urgent: boolean, important: boolean): Quadrant {
+  if (important) return urgent ? "do_first" : "schedule";
+  return urgent ? "delegate" : "eliminate";
+}
+
+const MINUTES_PER_DAY = 24 * 60;
+/** A bare number this size or under means hours, so "3" is 3 hours and "45" is 45 minutes. */
+const BARE_HOURS_UP_TO = 12;
+
+/** Minutes from text like `45m`, `3h`, `1h 30m`, `1.5h`, `1:30` or `3`. Null if it isn't a time. */
+export function parseDuration(input: string): number | null {
+  const text = input.trim().toLowerCase();
+  const parts = /^(?:(\d+(?:\.\d+)?)\s*h[a-z]*)?\s*(?:(\d+)\s*m[a-z]*)?$/.exec(
+    text,
+  );
+  const clock = /^(\d+):([0-5]\d)$/.exec(text);
+  let minutes: number | null = null;
+  if (text !== "" && parts) {
+    minutes = Number(parts[1] ?? 0) * 60 + Number(parts[2] ?? 0);
+  } else if (clock) {
+    minutes = Number(clock[1]) * 60 + Number(clock[2]);
+  } else if (/^\d+(\.\d+)?$/.test(text)) {
+    const value = Number(text);
+    minutes = value <= BARE_HOURS_UP_TO ? value * 60 : value;
+  }
+  if (minutes === null) return null;
+  minutes = Math.round(minutes);
+  return minutes > 0 && minutes <= MINUTES_PER_DAY ? minutes : null;
+}
+
+/** Time set aside in tasks that aren't finished yet. */
+export function plannedMin(tasks: Task[]): number {
+  return tasks
+    .filter((task) => !task.done)
+    .reduce((sum, task) => sum + task.allocated_min, 0);
+}
+
+/** Minutes the subtasks go over the task's own time. Zero if the task has no time set. */
+export function subtasksOverBy(task: Task): number {
+  if (task.allocated_min === 0) return 0;
+  const steps = task.subtasks.reduce((sum, s) => sum + s.allocated_min, 0);
+  return Math.max(steps - task.allocated_min, 0);
+}
+
+/** The most pressing open task, leaving out what the matrix says to drop. */
+export function nextTask(tasks: Task[]): Task | undefined {
+  return sortTasks(tasks).find(
+    (task) => !task.done && task.quadrant !== "eliminate",
+  );
+}
 
 function nextId(items: { id: number }[]): number {
   return Math.max(0, ...items.map((item) => item.id)) + 1;
@@ -90,6 +187,8 @@ export function addTask(
   tasks: Task[],
   title: string,
   priority: Priority,
+  quadrant: Quadrant,
+  allocated_min: number,
 ): Task[] {
   return [
     ...tasks,
@@ -99,16 +198,19 @@ export function addTask(
       priority,
       done: false,
       done_on: null,
+      quadrant,
+      allocated_min,
       subtasks: [],
     },
   ];
 }
 
-/** Open tasks first, most important first. Within that, oldest first. */
+/** Open tasks first, then by quadrant and priority. Within that, oldest first. */
 export function sortTasks(tasks: Task[]): Task[] {
   return [...tasks].sort(
     (a, b) =>
       Number(a.done) - Number(b.done) ||
+      QUADRANTS.indexOf(a.quadrant) - QUADRANTS.indexOf(b.quadrant) ||
       PRIORITIES.indexOf(a.priority) - PRIORITIES.indexOf(b.priority) ||
       a.id - b.id,
   );
@@ -131,8 +233,13 @@ export function toggleSubtask(task: Task, id: number): Task {
   return { ...task, subtasks, done: subtasks.every((s) => s.done) };
 }
 
-export function addSubtask(task: Task, title: string): Task {
-  const subtask = { id: nextId(task.subtasks), title, done: false };
+export function addSubtask(task: Task, title: string, allocated_min = 0): Task {
+  const subtask = {
+    id: nextId(task.subtasks),
+    title,
+    done: false,
+    allocated_min,
+  };
   return { ...task, done: false, subtasks: [...task.subtasks, subtask] };
 }
 

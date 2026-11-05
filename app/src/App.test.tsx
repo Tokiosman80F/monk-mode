@@ -35,7 +35,10 @@ describe("App", () => {
   it("loads state and navigates between all screens", async () => {
     await renderApp();
     expect(
-      screen.getByRole("heading", { level: 1, name: "Today" }),
+      screen.getByRole("heading", {
+        level: 1,
+        name: new RegExp(String(new Date().getFullYear())),
+      }),
     ).toBeInTheDocument();
 
     for (const name of [

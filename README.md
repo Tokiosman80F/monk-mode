@@ -6,7 +6,7 @@ A free Windows app for staying off distracting sites during long study stretches
 - **Always blocked:** the worst sites, like TikTok, stay closed.
 - **Shorts and Reels blocked:** YouTube Shorts, Instagram Reels and Facebook Watch are closed even with time left. Normal videos still play.
 - **Commitment lock:** pick an end date, and until then your rules can only get stricter.
-- **Today's tasks:** add and remove tasks with subtasks and a priority, a Pomodoro timer, a streak and simple charts.
+- **Today's tasks:** sort tasks with the Eisenhower Matrix, give tasks and subtasks a time and a priority, and run a Pomodoro timer, with a streak and simple charts.
 - **XP and levels:** earn XP for focus time and finished tasks, level up and unlock badges.
 
 Desktop apps like Spotify and Discord are never blocked or closed.

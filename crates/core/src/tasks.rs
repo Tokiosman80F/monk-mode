@@ -9,6 +9,7 @@ use crate::models::{Priority, State, Task};
 use crate::progress::progress;
 
 const MAX_TITLE_CHARS: usize = 200;
+const MINUTES_PER_DAY: u32 = 24 * 60;
 pub const SUBTASK_XP: u32 = 5;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -19,6 +20,8 @@ pub enum TaskError {
     TooLong,
     #[error("Two tasks have the same ID.")]
     DuplicateId,
+    #[error("A task can't be given more than 24 hours.")]
+    TooMuchTime,
 }
 
 pub fn priority_xp(priority: Priority) -> u32 {
@@ -54,12 +57,18 @@ fn validate(tasks: &[Task]) -> Result<(), TaskError> {
     let mut ids = HashSet::new();
     for task in tasks {
         check_title(&task.title)?;
+        if task.allocated_min > MINUTES_PER_DAY {
+            return Err(TaskError::TooMuchTime);
+        }
         if !ids.insert(task.id) {
             return Err(TaskError::DuplicateId);
         }
         let mut sub_ids = HashSet::new();
         for subtask in &task.subtasks {
             check_title(&subtask.title)?;
+            if subtask.allocated_min > MINUTES_PER_DAY {
+                return Err(TaskError::TooMuchTime);
+            }
             if !sub_ids.insert(subtask.id) {
                 return Err(TaskError::DuplicateId);
             }
@@ -113,7 +122,7 @@ pub fn prune_tasks(tasks: &mut Vec<Task>, today: NaiveDate) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::Subtask;
+    use crate::models::{Quadrant, Subtask};
 
     fn date(d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 11, d).unwrap()
@@ -126,6 +135,8 @@ mod tests {
             priority,
             done,
             done_on: None,
+            quadrant: Quadrant::default(),
+            allocated_min: 0,
             subtasks: vec![],
         }
     }
@@ -135,6 +146,7 @@ mod tests {
             id,
             title: format!("Step {id}"),
             done,
+            allocated_min: 0,
         }
     }
 
@@ -225,6 +237,46 @@ mod tests {
 
         assert_eq!(s.today.task_xp, 0);
         assert!(s.tasks.is_empty());
+    }
+
+    #[test]
+    fn time_and_quadrant_are_kept_and_earn_nothing_by_themselves() {
+        let mut s = State::new(date(5));
+        let mut t = task(1, Priority::High, false);
+        t.allocated_min = 180;
+        t.quadrant = Quadrant::DoFirst;
+        let mut step = subtask(1, false);
+        step.allocated_min = 45;
+        t.subtasks = vec![step];
+        apply(&mut s, vec![t]).unwrap();
+        assert_eq!(s.tasks[0].allocated_min, 180);
+        assert_eq!(s.tasks[0].quadrant, Quadrant::DoFirst);
+        assert_eq!(s.tasks[0].subtasks[0].allocated_min, 45);
+        assert_eq!(s.today.task_xp, 0);
+    }
+
+    #[test]
+    fn more_than_a_day_of_time_is_refused() {
+        let mut s = State::new(date(5));
+        let mut t = task(1, Priority::Low, false);
+        t.allocated_min = 1441;
+        assert_eq!(apply(&mut s, vec![t]), Err(TaskError::TooMuchTime));
+
+        let mut t = task(1, Priority::Low, false);
+        let mut step = subtask(1, false);
+        step.allocated_min = 1441;
+        t.subtasks = vec![step];
+        assert_eq!(apply(&mut s, vec![t]), Err(TaskError::TooMuchTime));
+    }
+
+    #[test]
+    fn tasks_saved_before_time_and_quadrants_still_load() {
+        let stored = r#"[{"id":1,"title":"Old","priority":"high","done":false,"done_on":null,
+            "subtasks":[{"id":1,"title":"Step","done":false}]}]"#;
+        let tasks: Vec<Task> = serde_json::from_str(stored).unwrap();
+        assert_eq!(tasks[0].quadrant, Quadrant::Schedule);
+        assert_eq!(tasks[0].allocated_min, 0);
+        assert_eq!(tasks[0].subtasks[0].allocated_min, 0);
     }
 
     #[test]
