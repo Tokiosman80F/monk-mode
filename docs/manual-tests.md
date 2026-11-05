@@ -8,7 +8,7 @@ Open an admin terminal for any step marked **(admin)**.
 
 ## Setup
 
-1. Run the installer from `app/src-tauri/target/release/bundle/nsis/` (or the CI artifact). Approve the UAC prompt.
+1. Run the installer from `target/release/bundle/nsis/` (or the CI artifact). Approve the UAC prompt.
 2. Follow the setup wizard, including loading the extension in Chrome, Edge and Brave and enabling **Allow in Incognito**.
 3. Check the service is up **(admin)**: `sc query MonkModeService` shows `RUNNING`.
 
@@ -35,20 +35,21 @@ Record each result as pass or fail, with the date, under [Results](#results).
 
 ## Tamper protection
 
-| #   | Test                                                                                                                                                                     | Expected                                                                      |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
-| T1  | **(admin)** Remove the Monk Mode lines from `C:\Windows\System32\drivers\etc\hosts`                                                                                      | Back within 5 s. Your other lines are kept                                    |
-| T2  | **(admin)** Mark the hosts file read-only and repeat T1                                                                                                                  | Same result                                                                   |
-| T3  | Kill `monk-mode-app.exe` in Task Manager                                                                                                                                 | Back within 10 s                                                              |
-| T4  | Choose **Quit** in the tray menu                                                                                                                                         | The app stays closed and the service keeps running. Starting it again works   |
-| T5  | While locked **(admin)**: `sc stop MonkModeService`                                                                                                                      | Fails with an error, and the service keeps running                            |
-| T6  | **(admin)** `taskkill /F /IM monk-service.exe`, then check again after 10 s                                                                                              | The service comes back and blocks resume                                      |
-| T7  | Locked: in the app, try to remove a site, raise the allowance and turn off the Shorts blocker                                                                            | Controls are disabled                                                         |
-| T8  | Locked: run the uninstaller                                                                                                                                              | Refuses, showing the lock's end date                                          |
-| T9  | **(admin)** Locked: set the system clock back 1 month, then restart the service                                                                                          | Still locked, and the allowance isn't refilled. Set the clock back afterwards |
-| T10 | **(admin)** Locked: delete `HKLM\SOFTWARE\MonkMode`, then restart the service                                                                                            | Still locked, and the key is back                                             |
-| T11 | **(admin)** Locked: stop-free deletion of the database is not possible while the service runs. Boot into Safe Mode, delete `C:ProgramDataMonkModemonk.db`, boot normally | Still locked, restored from the registry                                      |
-| T12 | Not locked: run the uninstaller                                                                                                                                          | Removes the service, the hosts block and the registry key                     |
+| #   | Test                                                                                                  | Expected                                                                      |
+| --- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| T1  | **(admin)** Remove the Monk Mode lines from `C:\Windows\System32\drivers\etc\hosts`                   | Back within 5 s. Your other lines are kept                                    |
+| T2  | **(admin)** Mark the hosts file read-only and repeat T1                                               | Same result                                                                   |
+| T3  | Kill `monk-mode-app.exe` in Task Manager                                                              | Back within 10 s                                                              |
+| T4  | Choose **Quit** in the tray menu                                                                      | The app stays closed and the service keeps running. Starting it again works   |
+| T5  | While locked **(admin)**: `sc stop MonkModeService`                                                   | Fails with an error, and the service keeps running                            |
+| T6  | **(admin)** `taskkill /F /IM monk-service.exe`, then check again after 10 s                           | The service comes back and blocks resume                                      |
+| T7  | Locked: in the app, try to remove a site, raise the allowance and turn off the Shorts blocker         | Controls are disabled                                                         |
+| T8  | Locked: run the uninstaller                                                                           | Refuses, showing the lock's end date                                          |
+| T9  | **(admin)** Locked: set the system clock back 1 month, then restart the service                       | Still locked, and the allowance isn't refilled. Set the clock back afterwards |
+| T10 | **(admin)** Locked: delete `HKLM\SOFTWARE\MonkMode`, then restart the service                         | Still locked, and the key is back                                             |
+| T11 | **(admin)** Locked: boot into Safe Mode, delete `C:\ProgramData\MonkMode\monk.db`, then boot normally | Still locked, restored from the registry                                      |
+| T12 | Not locked: run the uninstaller                                                                       | Removes the service, the hosts block and the registry key                     |
+| T13 | Signed in as a normal user: try to edit `C:\ProgramData\MonkMode\monk.db`                             | Access denied. It can be read but not changed                                 |
 
 ## Secure DNS
 

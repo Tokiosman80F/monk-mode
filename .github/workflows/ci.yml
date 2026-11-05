@@ -1,8 +1,8 @@
 name: CI
 
-# Manual only during development, by the owner's choice. T7.2 restores push and pull_request.
 on:
-  workflow_dispatch:
+  push:
+  pull_request:
 
 jobs:
   build:
@@ -23,7 +23,17 @@ jobs:
       - run: cargo fmt --all --check
       # tauri::generate_context! needs the built frontend to exist.
       - run: npm run build -w app
-      - run: cargo clippy --workspace -- -D warnings
+      - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
-      - run: npm run build -w extension
       - run: npm run tauri build -w app
+      - run: Compress-Archive -Path extension/dist/* -DestinationPath monk-mode-extension.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extension
+          path: monk-mode-extension.zip
+          if-no-files-found: error

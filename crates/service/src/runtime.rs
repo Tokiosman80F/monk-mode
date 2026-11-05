@@ -200,7 +200,7 @@ pub async fn run(options: RunOptions, shutdown: impl Future<Output = ()>) -> Res
     {
         let (shared, pushes) = (shared.clone(), pushes.clone());
         tokio::spawn(async move {
-            if let Err(e) = pipe::serve(pipe::PIPE_NAME, shared, pushes).await {
+            if let Err(e) = pipe::serve(monk_core::protocol::PIPE_NAME, shared, pushes).await {
                 error!("Named pipe server stopped: {e}");
             }
         });

@@ -7,6 +7,8 @@ use ts_rs::TS;
 use crate::engine::{ActiveTab, BlockedSet};
 use crate::models::{Settings, State};
 
+pub const PIPE_NAME: &str = r"\\.\pipe\monkmode";
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(tag = "type", content = "payload", rename_all = "snake_case")]
 #[ts(export)]
@@ -54,6 +56,8 @@ pub enum ErrorCode {
     LockedLoosening,
     InvalidRequest,
     Unauthorized,
+    /// Set by the app when it can't reach the service. The service never sends this.
+    ServiceUnavailable,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -99,12 +103,24 @@ impl Reply {
     }
 }
 
+/// Everything a client shows. `get_state` returns this, and `state_changed` carries it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Snapshot {
+    pub state: State,
+    pub blocked: BlockedSet,
+    /// Browsers with a live extension, by process name.
+    pub connected_browsers: Vec<String>,
+    /// Browsers running without the extension (F4).
+    pub missing_browsers: Vec<String>,
+}
+
 /// `state_changed`, sent by the service without a request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(tag = "type", content = "payload", rename_all = "snake_case")]
 #[ts(export)]
 pub enum Push {
-    StateChanged { state: State, blocked: BlockedSet },
+    StateChanged(Snapshot),
 }
 
 #[cfg(test)]
@@ -146,6 +162,11 @@ mod tests {
     }
 
     #[test]
+    fn the_pipe_name_matches_the_prd() {
+        assert_eq!(PIPE_NAME, "\\\\.\\pipe\\monkmode");
+    }
+
+    #[test]
     fn unknown_message_types_are_rejected() {
         let result: Result<Request, _> =
             serde_json::from_value(json!({ "id": "3", "type": "unlock_please" }));
@@ -177,10 +198,12 @@ mod tests {
     #[test]
     fn push_has_the_state_changed_type() {
         let date = chrono::NaiveDate::from_ymd_opt(2026, 11, 5).unwrap();
-        let push = Push::StateChanged {
+        let push = Push::StateChanged(Snapshot {
             state: State::new(date),
             blocked: BlockedSet::default(),
-        };
+            connected_browsers: vec![],
+            missing_browsers: vec![],
+        });
         let value = serde_json::to_value(&push).unwrap();
         assert_eq!(value["type"], "state_changed");
         assert_eq!(value["payload"]["state"]["today"]["date"], "2026-11-05");

@@ -339,33 +339,41 @@ Text/background pairs used for body text must pass WCAG AA (4.5:1); a unit test 
 - [x] **T4.8** `ext_blocked_attempt` reporting. *Acceptance:* blocked-attempt count increases in db.
 
 ### Phase 5 — Tauri app (`app/`)
-- [ ] **T5.1** Rust commands: named-pipe client exposing `get_state`, `update_settings`, `start_lock`, `start_pomodoro`, `stop_pomodoro`, `get_stats`; forward `state_changed` as a Tauri event. *Acceptance:* invoke from React returns state.
-- [ ] **T5.2** Zustand store + `useServiceState` hook; "Service not running" banner. *Acceptance:* Vitest for store.
-- [ ] **T5.3** Layout: sidebar `menu` with logo + 5 routes (Section 6), `fade-up` on route change. *Acceptance:* navigation works.
-- [ ] **T5.4** Today screen (F1, F7, F8 summary). *Acceptance:* Testing Library test with mock state.
-- [ ] **T5.5** Block lists screen (2 tabs) with add/remove and "move to always blocked"; loosening controls disabled with tooltip when locked. *Acceptance:* test that remove is disabled when locked.
-- [ ] **T5.6** Schedule screen: allowance minutes (max = current value when locked), Pomodoro lengths, study blocks, daily target. *Acceptance:* test.
-- [ ] **T5.7** Pomodoro UI: pick block, start/stop, countdown with breathing logo, notification at end. *Acceptance:* test with fake timers.
-- [ ] **T5.8** Stats screen with SVG bars for 7/30 days. *Acceptance:* renders with mock data.
-- [ ] **T5.9** Lock screen + 3-step wizard with typed phrase. *Acceptance:* confirm button disabled until the phrase matches exactly.
-- [ ] **T5.10** First-run setup wizard (Section 6). *Acceptance:* shown only when `settings.setup_done = false`.
-- [ ] **T5.11** Tray icon + menu (F9), autostart, single instance, close-to-tray. *Acceptance:* manual test documented.
-- [ ] **T5.12** Notifications: 2 min / 30 s warnings, allowance used up, Pomodoro end. *Acceptance:* manual test documented.
-- [ ] **T5.13** About screen with honest limitations text (F6). *Acceptance:* present.
+- [x] **T5.1** Rust commands: named-pipe client exposing `get_state`, `update_settings`, `start_lock`, `start_pomodoro`, `stop_pomodoro`, `get_stats`; forward `state_changed` as a Tauri event. *Acceptance:* invoke from React returns state.
+- [x] **T5.2** Zustand store + `useServiceState` hook; "Service not running" banner. *Acceptance:* Vitest for store.
+- [x] **T5.3** Layout: sidebar `menu` with logo + 5 routes (Section 6), `fade-up` on route change. *Acceptance:* navigation works.
+- [x] **T5.4** Today screen (F1, F7, F8 summary). *Acceptance:* Testing Library test with mock state.
+- [x] **T5.5** Block lists screen (2 tabs) with add/remove and "move to always blocked"; loosening controls disabled with tooltip when locked. *Acceptance:* test that remove is disabled when locked.
+- [x] **T5.6** Schedule screen: allowance minutes (max = current value when locked), Pomodoro lengths, study blocks, daily target. *Acceptance:* test.
+- [x] **T5.7** Pomodoro UI: pick block, start/stop, countdown with breathing logo, notification at end. *Acceptance:* test with fake timers.
+  > NOTE: The countdown shows `remaining_sec` from the service, which pushes it every second, so the UI has no timer of its own and the test drives it with state changes instead of fake timers.
+- [x] **T5.8** Stats screen with SVG bars for 7/30 days. *Acceptance:* renders with mock data.
+- [x] **T5.9** Lock screen + 3-step wizard with typed phrase. *Acceptance:* confirm button disabled until the phrase matches exactly.
+- [x] **T5.10** First-run setup wizard (Section 6). *Acceptance:* shown only when `settings.setup_done = false`.
+  > NOTE: `state_changed` and `get_state` also carry `connected_browsers` and `missing_browsers`, for "Waiting for extension…" and a notice on Today.
+- [x] **T5.11** Tray icon + menu (F9), autostart, single instance, close-to-tray. *Acceptance:* manual test documented.
+  > NOTE: Steps are in `docs/manual-tests.md` (A1-A4), to run in T7.3. Autostart is only registered in release builds. "Close to tray" closes the window for real and rebuilds it on open, because a hidden WebView2 held 166 MB. Start Pomodoro in the tray starts the first unfinished study block.
+- [x] **T5.12** Notifications: 2 min / 30 s warnings, allowance used up, Pomodoro end. *Acceptance:* manual test documented.
+  > NOTE: Steps are in `docs/manual-tests.md` (A5), to run in T7.3. The app works these out from state changes (tested in `notify.rs`).
+- [x] **T5.13** About screen with honest limitations text (F6). *Acceptance:* present.
 
 ### Phase 6 — Installer & packaging
-- [ ] **T6.1** Tauri NSIS bundle (per-machine, admin), includes `monk-service.exe`. *Acceptance:* `npm run tauri build -w app` produces an installer in CI.
+- [x] **T6.1** Tauri NSIS bundle (per-machine, admin), includes `monk-service.exe`. *Acceptance:* `npm run tauri build -w app` produces an installer in CI.
+  > NOTE: Files are copied by `installer/hooks.nsh` rather than Tauri resources, so a plain `cargo build` does not need release builds of the service and extension to exist.
 - [ ] **T6.2** Install hook: install + start service, create extension token, create `C:\ProgramData\MonkMode` with ACL (SYSTEM + Admins write, Users read), apply TikTok block immediately. *Acceptance:* fresh Windows install → service running, tiktok.com blocked.
+  > NOTE: Implemented in the hooks and `monk-service install`. Left open until an elevated install is run in T7.3.
 - [ ] **T6.3** Uninstall hook: asks service; aborts with a message while locked; otherwise stops service, removes hosts block, deletes registry key. *Acceptance:* manual test both cases.
+  > NOTE: Implemented in the hooks and `monk-service uninstall`. Left open until run in T7.3. Upgrades are also refused during a lock, because Tauri upgrades run the old uninstaller.
 - [ ] **T6.4** Extension packaged as `.zip` CI artifact + README steps for loading it unpacked. *Acceptance:* artifact in CI.
 
 ### Phase 7 — Verification
-- [ ] **T7.1** Write `docs/manual-tests.md` covering every item in Section 8.
+- [x] **T7.1** Write `docs/manual-tests.md` covering every item in Section 8.
 - [ ] **T7.2** All automated tests + lint green on Windows CI.
   > NOTE: Restore the `push` and `pull_request` triggers in `.github/workflows/ci.yml` first; they were removed during development (see T0.7). Until then, phases are checked locally with `npm run lint`, `npm run test`, `cargo clippy` and `cargo test --workspace`.
 - [ ] **T7.3** Run the manual tests on the owner's Windows PC (or a Windows VM) and record results. *Acceptance:* all Section 8 criteria pass, or failures are added as new tasks.
-- [ ] **T7.4** Measure idle CPU/RAM. *Acceptance:* within Section 8 limits.
-- [ ] **T7.5** README: what it is, install, extension setup, how the lock works, limitations, screenshots.
+- [x] **T7.4** Measure idle CPU/RAM. *Acceptance:* within Section 8 limits.
+  > NOTE: Measured with release builds, idle in the tray: 0.05% CPU and 26 MB working set (service + UI), against limits of 1% and 120 MB. Closing the window destroys it to free WebView2. With the window open, WebView2 brings it to about 150 MB private memory (376 MB working set, which double-counts shared pages), over the limit. That is active use rather than idle, so this is recorded here and not as a failure.
+- [x] **T7.5** README: what it is, install, extension setup, how the lock works, limitations, screenshots.
 
 ---
 

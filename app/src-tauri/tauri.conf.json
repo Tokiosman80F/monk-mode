@@ -1,13 +1,14 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Monk Mode",
+  "mainBinaryName": "monk-mode-app",
   "version": "0.1.0",
   "identifier": "com.tokiosman96.monkmode",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build"
+    "beforeBuildCommand": "npm run build:bundle"
   },
   "app": {
     "windows": [
@@ -16,7 +17,10 @@
         "width": 900,
         "height": 640,
         "minWidth": 720,
-        "minHeight": 520
+        "minHeight": 520,
+        "visible": false,
+        "center": true,
+        "create": false
       }
     ],
     "security": { "csp": null }
@@ -24,6 +28,12 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "windows": {
+      "nsis": {
+        "installMode": "perMachine",
+        "installerHooks": "../../installer/hooks.nsh"
+      }
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

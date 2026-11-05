@@ -1,6 +1,8 @@
 //! The Windows Service wrapper: install, uninstall and the service entry point.
 
 use std::ffi::{OsStr, OsString};
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -28,12 +30,58 @@ const DISPLAY_NAME: &str = "Monk Mode Blocker";
 const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
 const STOP_WAIT: Duration = Duration::from_secs(20);
 
+/// SYSTEM and admins may write, users may only read. Without this, a normal user could edit the
+/// database while the service is running.
+fn secure_data_dir() -> Result<(), String> {
+    let dir = data_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Couldn't create {}: {e}", dir.display()))?;
+    let system_root = std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into());
+    let status = Command::new(PathBuf::from(system_root).join(r"System32\icacls.exe"))
+        .arg(&dir)
+        .args([
+            "/inheritance:r",
+            "/grant:r",
+            "*S-1-5-18:(OI)(CI)F",
+            "*S-1-5-32-544:(OI)(CI)F",
+            "*S-1-5-32-545:(OI)(CI)RX",
+            "/T",
+            "/Q",
+        ])
+        .stdout(Stdio::null())
+        .status()
+        .map_err(|e| format!("Couldn't run icacls: {e}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("Couldn't secure {}: {status}", dir.display()))
+    }
+}
+
+/// Safe to run again: an existing service is just started if it isn't running.
 pub fn install() -> Result<(), String> {
     let manager = ServiceManager::local_computer(
         None::<&str>,
         ServiceManagerAccess::CONNECT | ServiceManagerAccess::CREATE_SERVICE,
     )
     .map_err(|e| format!("Couldn't reach the service manager. Is this running as admin? {e}"))?;
+
+    secure_data_dir()?;
+    runtime::ensure_token(&data_dir()).map_err(|e| format!("Couldn't create the token: {e}"))?;
+
+    let existing = manager.open_service(
+        SERVICE_NAME,
+        ServiceAccess::QUERY_STATUS | ServiceAccess::START,
+    );
+    if let Ok(service) = existing {
+        let status = service.query_status().map_err(|e| e.to_string())?;
+        if status.current_state == ServiceState::Stopped {
+            service
+                .start::<&OsStr>(&[])
+                .map_err(|e| format!("Couldn't start the service: {e}"))?;
+        }
+        println!("{SERVICE_NAME} was already installed.");
+        return Ok(());
+    }
 
     let info = ServiceInfo {
         name: OsString::from(SERVICE_NAME),
@@ -99,34 +147,34 @@ pub fn uninstall() -> Result<(), String> {
         .map_err(|e| {
             format!("Couldn't reach the service manager. Is this running as admin? {e}")
         })?;
-    let service = manager
-        .open_service(
-            SERVICE_NAME,
-            ServiceAccess::QUERY_STATUS | ServiceAccess::STOP | ServiceAccess::DELETE,
-        )
-        .map_err(|e| format!("Couldn't open the service: {e}"))?;
-
-    let status = service.query_status().map_err(|e| e.to_string())?;
-    if status.current_state != ServiceState::Stopped {
-        service
-            .stop()
-            .map_err(|e| format!("Couldn't stop the service: {e}"))?;
-        let deadline = Instant::now() + STOP_WAIT;
-        while service
-            .query_status()
-            .map_err(|e| e.to_string())?
-            .current_state
-            != ServiceState::Stopped
-        {
-            if Instant::now() > deadline {
-                return Err("The service didn't stop in time.".to_string());
+    // A service that's already gone mustn't leave the app impossible to remove.
+    let service = manager.open_service(
+        SERVICE_NAME,
+        ServiceAccess::QUERY_STATUS | ServiceAccess::STOP | ServiceAccess::DELETE,
+    );
+    if let Ok(service) = service {
+        let status = service.query_status().map_err(|e| e.to_string())?;
+        if status.current_state != ServiceState::Stopped {
+            service
+                .stop()
+                .map_err(|e| format!("Couldn't stop the service: {e}"))?;
+            let deadline = Instant::now() + STOP_WAIT;
+            while service
+                .query_status()
+                .map_err(|e| e.to_string())?
+                .current_state
+                != ServiceState::Stopped
+            {
+                if Instant::now() > deadline {
+                    return Err("The service didn't stop in time.".to_string());
+                }
+                std::thread::sleep(Duration::from_millis(250));
             }
-            std::thread::sleep(Duration::from_millis(250));
         }
+        service
+            .delete()
+            .map_err(|e| format!("Couldn't delete the service: {e}"))?;
     }
-    service
-        .delete()
-        .map_err(|e| format!("Couldn't delete the service: {e}"))?;
 
     hosts::enforce(&[]).map_err(|e| format!("Couldn't clean the hosts file: {e}"))?;
     platform

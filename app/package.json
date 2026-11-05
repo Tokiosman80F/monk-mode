@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:bundle": "vite build && npm --prefix .. run build -w monk-mode-extension && cargo build --release -p monk-service",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "tauri": "tauri"
@@ -16,7 +17,9 @@
     "@tauri-apps/api": "^2.2.0",
     "lucide-react": "^0.469.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.1",
+    "zustand": "^5.0.2"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.2.0",
@@ -29,6 +32,10 @@
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "vite": "^5.4.11",
-    "vitest": "^2.1.8"
+    "vitest": "^2.1.8",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "@testing-library/dom": "^10.4.0",
+    "jsdom": "^25.0.1"
   }
 }

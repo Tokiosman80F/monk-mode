@@ -17,3 +17,5 @@ Thumbs.db
 # Claude Code local state
 .claude/
 token.json
+# Editor plugin cache
+.impeccable/

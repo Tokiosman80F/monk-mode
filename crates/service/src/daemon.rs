@@ -106,6 +106,7 @@ pub struct Daemon<P: Platform> {
     heartbeats: HashMap<String, u64>,
     unconnected_since: Option<u64>,
     extension_ok: bool,
+    missing_browsers: Vec<String>,
     last_check: Option<u64>,
     last_seen_saved_at: u64,
     enforced: Option<BlockedSet>,
@@ -163,6 +164,7 @@ impl<P: Platform> Daemon<P> {
             heartbeats: HashMap::new(),
             unconnected_since: None,
             extension_ok: true,
+            missing_browsers: Vec::new(),
             last_check: None,
             last_seen_saved_at: 0,
             enforced: None,
@@ -220,13 +222,14 @@ impl<P: Platform> Daemon<P> {
     }
 
     fn check_browsers(&mut self) {
-        let missing = self.platform.running_browsers().iter().any(|browser| {
+        let mut missing = self.platform.running_browsers();
+        missing.retain(|browser| {
             !self
                 .heartbeats
                 .get(browser)
                 .is_some_and(|at| self.is_fresh(*at))
         });
-        self.unconnected_since = if missing {
+        self.unconnected_since = if !missing.is_empty() {
             Some(self.unconnected_since.unwrap_or(self.uptime))
         } else {
             None
@@ -234,6 +237,7 @@ impl<P: Platform> Daemon<P> {
         self.extension_ok = self
             .unconnected_since
             .is_none_or(|since| self.uptime - since <= EXTENSION_GRACE_SEC);
+        self.missing_browsers = missing;
     }
 
     /// Runs once per second. Returns what happened, for logging and notifications.
@@ -316,7 +320,19 @@ impl<P: Platform> Daemon<P> {
 
     pub fn state_json(&self) -> Value {
         let (state, blocked) = self.snapshot();
-        json!({ "state": state, "blocked": blocked })
+        let mut connected_browsers: Vec<&String> = self
+            .heartbeats
+            .iter()
+            .filter(|(_, at)| self.is_fresh(**at))
+            .map(|(browser, _)| browser)
+            .collect();
+        connected_browsers.sort();
+        json!({
+            "state": state,
+            "blocked": blocked,
+            "connected_browsers": connected_browsers,
+            "missing_browsers": self.missing_browsers,
+        })
     }
 
     /// The `state_changed` message, if anything changed since the last one.
@@ -839,8 +855,8 @@ pub mod tests {
         rig.run(1);
         let first = rig.daemon.push_if_changed().unwrap();
         let parsed: monk_core::protocol::Push = serde_json::from_str(&first).unwrap();
-        let monk_core::protocol::Push::StateChanged { state, .. } = parsed;
-        assert_eq!(state.settings.daily_allowance_min, 10);
+        let monk_core::protocol::Push::StateChanged(snapshot) = parsed;
+        assert_eq!(snapshot.state.settings.daily_allowance_min, 10);
 
         rig.run(1);
         assert_eq!(rig.daemon.push_if_changed(), None);
@@ -901,6 +917,23 @@ pub mod tests {
         assert!(!rig.hosts_has("youtube.com"));
         rig.run(60);
         assert!(rig.hosts_has("youtube.com"));
+    }
+
+    #[test]
+    fn snapshots_list_connected_and_missing_browsers() {
+        let mut rig = with_browser("chrome.exe");
+        rig.fake
+            .0
+            .lock()
+            .unwrap()
+            .browsers
+            .push("msedge.exe".to_string());
+        rig.daemon.ext_connected("chrome.exe");
+        rig.run(1);
+        let snapshot: monk_core::protocol::Snapshot =
+            serde_json::from_value(rig.daemon.state_json()).unwrap();
+        assert_eq!(snapshot.connected_browsers, ["chrome.exe"]);
+        assert_eq!(snapshot.missing_browsers, ["msedge.exe"]);
     }
 
     #[test]

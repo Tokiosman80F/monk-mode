@@ -18,7 +18,6 @@ use windows::Win32::Security::{PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES};
 use crate::daemon::{Client, Platform};
 use crate::runtime::{dispatch, Shared};
 
-pub const PIPE_NAME: &str = r"\\.\pipe\monkmode";
 const MAX_LINE_BYTES: u64 = 1 << 20;
 
 /// SYSTEM, admins and the owner get full access. Signed-in users may read and write, but `0x12019b` leaves
