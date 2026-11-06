@@ -19,3 +19,5 @@ Thumbs.db
 token.json
 # Editor plugin cache
 .impeccable/
+# Private design notes
+PRD.md

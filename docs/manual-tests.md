@@ -1,6 +1,6 @@
 # Manual tests
 
-These cover what automated tests can't: the real Windows Service, real browsers and the installer. Each item maps to PRD Section 8 or a task with a manual acceptance check.
+These cover what automated tests can't: the real Windows Service, real browsers and the installer. Each item maps to one of the success criteria or to a task that needs a manual check.
 
 **Run these on a Windows PC or VM you're happy to lock.** Use a short lock (a few minutes, or 1 week at most). A real lock can't be undone until it ends. A VM with a snapshot is the safest choice.
 
@@ -53,7 +53,7 @@ Record each result as pass or fail, with the date, under [Results](#results).
 
 ## Secure DNS
 
-Hosts file blocks can be skipped when a browser uses DNS over HTTPS (PRD Section 10).
+Hosts file blocks can be skipped when a browser uses DNS over HTTPS .
 
 | #   | Test                                                                    | Expected                                                                   |
 | --- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------- |
@@ -79,7 +79,7 @@ Hosts file blocks can be skipped when a browser uses DNS over HTTPS (PRD Section
 | ---------- | --------------------------------------------------------------- | -------------------------------------------------------------- | ----------------------- |
 | 2026-11-05 | 0.1.0, installed on the owner's PC, tested with a 5-minute lock | Install, T1, T2, T3, T5, T6, T8 (service check only), T10, T13 | None in the final build |
 
-Not yet run: B1-B14, D1-D2, T4, T7, T8 with the real `uninstall.exe`, T9, T11, T12, A1-A8. A8's numbers come from T7.4 in the PRD.
+Not yet run: B1-B14, D1-D2, T4, T7, T8 with the real `uninstall.exe`, T9, T11, T12, A1-A8.
 
 Earlier builds failed T5 (`sc stop` ended the service during a lock) and a reinstall (it broke the data folder's permissions). Both are fixed.
 

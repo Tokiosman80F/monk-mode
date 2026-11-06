@@ -119,8 +119,6 @@ Open **Lock**, pick a length (1 week, 1 month, 3 months or a date), and type `I 
 - **The app is just a client.** It sends requests, and the service checks each one. For example, it refuses to raise a limit during a lock.
 - **The lock is kept twice.** The service keeps the end date in its database and as a signed copy in the registry, so deleting one doesn't unlock. Turning the clock back doesn't shorten a lock either.
 
-See [PRD.md](PRD.md) for the full design.
-
 ## Limitations
 
 The goal is to make giving up slow and annoying, not impossible. An admin user can still get around it:
@@ -196,7 +194,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-Automated tests can't cover a real service install or real browsers, so [docs/manual-tests.md](docs/manual-tests.md) lists those checks. New features start as a task in [PRD.md](PRD.md).
+Automated tests can't cover a real service install or real browsers, so [docs/manual-tests.md](docs/manual-tests.md) lists those checks.
 
 ## License
 

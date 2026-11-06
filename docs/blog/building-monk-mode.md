@@ -144,6 +144,6 @@ When you're ready, start a short lock first, maybe a week. **There's no undo**, 
 
 ## Try it, or help build it
 
-Monk Mode Blocker is free and MIT licensed. The code, the full design document and the list of manual tests are all on [GitHub](https://github.com/Tokiosman80F/monk-mode). Issues and pull requests are welcome, especially from anyone who wants to bring it to macOS.
+Monk Mode Blocker is free and MIT licensed. The code and the list of manual tests are on [GitHub](https://github.com/Tokiosman80F/monk-mode). Issues and pull requests are welcome, especially from anyone who wants to bring it to macOS.
 
 Day 12 of 92. Back to work.
