@@ -21,3 +21,6 @@ token.json
 .impeccable/
 # Private design notes
 PRD.md
+# Private notes, except the images the README uses
+docs/*
+!docs/screenshots/

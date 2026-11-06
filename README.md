@@ -171,7 +171,7 @@ crates/service    monk-service.exe: the main loop, SQLite, WebSocket and named p
 app/              Tauri 2 app: React, TypeScript and DaisyUI, plus the tray and timer.
 extension/        Manifest V3 extension: active-tab timer, URL blocking, block page.
 installer/        NSIS hooks that install the service and extension.
-docs/             Manual tests and screenshots.
+docs/screenshots The images in this README.
 ```
 
 ## Contributing
@@ -193,8 +193,6 @@ cargo clippy --workspace --all-targets -- -D warnings
 ```bash
 cargo test --workspace
 ```
-
-Automated tests can't cover a real service install or real browsers, so [docs/manual-tests.md](docs/manual-tests.md) lists those checks.
 
 ## License
 
