@@ -1,7 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod mini;
 mod notify;
 mod pipe;
+mod sound;
 mod tray;
 
 use std::path::PathBuf;
@@ -118,6 +120,7 @@ fn main() {
             Some(vec![AUTOSTART_ARG]),
         ))
         .manage(Pipe::default())
+        .manage(mini::Mini::default())
         .invoke_handler(tauri::generate_handler![
             get_state,
             update_settings,
@@ -128,6 +131,7 @@ fn main() {
             get_stats,
             install_service,
             open_extension_folder,
+            mini::dismiss_mini,
         ])
         .setup(|app| {
             tray::build(app)?;

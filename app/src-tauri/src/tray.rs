@@ -2,7 +2,7 @@
 
 use monk_core::protocol::Message;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
-use tauri::tray::TrayIconBuilder;
+use tauri::tray::{TrayIcon, TrayIconBuilder};
 use tauri::{App, AppHandle, Manager, WebviewWindow, WebviewWindowBuilder, Wry};
 
 use crate::notify;
@@ -10,11 +10,18 @@ use crate::pipe::Pipe;
 
 pub struct Tray {
     allowance: MenuItem<Wry>,
+    icon: TrayIcon<Wry>,
 }
 
 impl Tray {
     pub fn set_allowance(&self, text: &str) {
         let _ = self.allowance.set_text(text);
+    }
+
+    /// Hovering over the tray icon shows the time left in a session.
+    pub fn set_timer(&self, text: Option<&str>) {
+        let tooltip = text.map_or("Monk Mode".to_string(), |t| format!("Monk Mode: {t}"));
+        let _ = self.icon.set_tooltip(Some(tooltip));
     }
 }
 
@@ -46,9 +53,10 @@ pub fn show_window(app: &AppHandle) {
 
 async fn start_pomodoro(app: AppHandle) {
     let pipe = app.state::<Pipe>();
+    let last_focus = pipe.last_focus();
     let task_id = pipe
         .last_snapshot()
-        .and_then(|snapshot| notify::next_task(&snapshot.state));
+        .and_then(|snapshot| notify::next_task(&snapshot.state, last_focus.as_deref()));
     let _ = pipe.call(Message::StartPomodoro { task_id }).await;
     show_window(&app);
 }
@@ -86,8 +94,8 @@ pub fn build(app: &App) -> tauri::Result<()> {
     if let Some(icon) = app.default_window_icon() {
         tray = tray.icon(icon.clone());
     }
-    tray.build(app)?;
+    let icon = tray.build(app)?;
 
-    app.manage(Tray { allowance });
+    app.manage(Tray { allowance, icon });
     Ok(())
 }

@@ -17,6 +17,7 @@ export const api = {
   getStats: (days: number) => invoke<Stats>("get_stats", { days }),
   installService: () => invoke<void>("install_service"),
   openExtensionFolder: () => invoke<string>("open_extension_folder"),
+  dismissMini: () => invoke<void>("dismiss_mini"),
 
   onStateChanged: (handler: (snapshot: Snapshot) => void) =>
     listen<Snapshot>("state-changed", (event) => handler(event.payload)),

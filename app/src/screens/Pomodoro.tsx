@@ -1,8 +1,8 @@
 import { Play, Square } from "lucide-react";
 import { useState } from "react";
 import { api } from "../api";
-import { formatClock, formatDuration, nextTask } from "../lib";
-import { applyCall, useStore } from "../store";
+import { endsAt, formatClock, formatDuration, nextTask } from "../lib";
+import { applyCall, lastFocusTask, useStore } from "../store";
 import { ErrorNote, Logo } from "../ui";
 
 export default function Pomodoro() {
@@ -11,7 +11,8 @@ export default function Pomodoro() {
   if (!state) return null;
 
   const { pomodoro } = state;
-  const next = nextTask(state.tasks);
+  const next = nextTask(state.tasks, lastFocusTask());
+  const carryingOn = next !== undefined && next.title === lastFocusTask();
   const stop = async () => setError(await applyCall(api.stopPomodoro()));
   const start = async (taskId: number | null) =>
     setError(await applyCall(api.startPomodoro(taskId)));
@@ -23,7 +24,9 @@ export default function Pomodoro() {
           <p className="min-w-40 flex-1 truncate">
             {next ? (
               <>
-                <span className="text-neutral">Next up: </span>
+                <span className="text-neutral">
+                  {carryingOn ? "Carry on with: " : "Next up: "}
+                </span>
                 {next.title}
                 {next.allocated_min > 0 && (
                   <span className="text-neutral">
@@ -74,12 +77,17 @@ export default function Pomodoro() {
               : "Back to work when you're ready."}
           </p>
         </div>
-        <span
-          role="timer"
-          className={`font-display text-5xl font-light tabular-nums tracking-tight ${focusing ? "text-secondary" : ""}`}
-        >
-          {clock}
-        </span>
+        <div className="text-right">
+          <span
+            role="timer"
+            className={`block font-display text-5xl font-light tabular-nums tracking-tight ${focusing ? "text-secondary" : ""}`}
+          >
+            {clock}
+          </span>
+          <span className="text-sm text-neutral">
+            Ends at {endsAt(pomodoro.remaining_sec)}
+          </span>
+        </div>
         <button className="btn btn-ghost" onClick={() => void stop()}>
           <Square size={18} aria-hidden="true" />
           {focusing ? "Stop" : "Skip break"}

@@ -105,6 +105,9 @@ Social media, YouTube and music are the main distractions. On the phone, **Kahf 
 - Finished tasks leave the list the next day. Unfinished tasks carry over.
 - Pomodoro timer (default 50 min focus / 10 min break, configurable). A session starts on the most important open task, on any task from its row, or on none ("Free focus").
 - While a Pomodoro focus session runs, **all allowance sites are fully blocked** (allowance can't be spent during a session).
+- Start focus carries on with the task of the last session while it is open, so a break doesn't move you to another task. A running session or break shows when it ends, for example `Ends at 10:50 AM`.
+- While a session or break runs, a small **always-on-top timer** shows only the time left ("49 min left"), with a green dot for focus and a gold one for a break. It sits in the top-right corner, can be dragged, and remembers where it was put while the app runs. Its close button hides it until the next session. The tray icon's tooltip shows the same time left.
+- A short **chime** plays when a focus session or a break runs out: two falling notes for focus, two rising notes for the break. Stopping early or skipping a break is silent. It plays from the tray app, so it works with the window closed.
 
 ### F8. Stats & streak
 - Per day: focus time per task, time used per site, tasks finished, number of blocked attempts.

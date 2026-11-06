@@ -3,10 +3,12 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../api";
 import { LOCK_PHRASE } from "../lib";
+import { useStore } from "../store";
 import { FUTURE_LOCK, makeSnapshot, setStore } from "../test/fixtures";
 import About from "./About";
 import FocusSettings from "./FocusSettings";
 import Limits from "./Limits";
+import Mini from "./Mini";
 import LockScreen from "./Lock";
 import Pomodoro from "./Pomodoro";
 import Rewards from "./Rewards";
@@ -27,12 +29,14 @@ vi.mock("../api", () => ({
     getStats: vi.fn(),
     installService: vi.fn(),
     openExtensionFolder: vi.fn(),
+    dismissMini: vi.fn(),
     onStateChanged: vi.fn(async () => () => {}),
     onServiceStatus: vi.fn(async () => () => {}),
   },
 }));
 
 beforeEach(() => {
+  localStorage.clear();
   vi.clearAllMocks();
   vi.mocked(api.updateSettings).mockResolvedValue(makeSnapshot());
   vi.mocked(api.updateTasks).mockResolvedValue(makeSnapshot());
@@ -323,6 +327,36 @@ describe("Tasks", () => {
   });
 });
 
+describe("Mini timer", () => {
+  it("shows only the time left", () => {
+    setStore(({ state }) => {
+      state.pomodoro = {
+        phase: "focus",
+        task_title: "Building project",
+        started_at: "2026-11-05T09:00:00Z",
+        remaining_sec: 49 * 60,
+      };
+    });
+    render(<Mini />);
+    expect(
+      screen.getByRole("timer", { name: "Focus time left" }),
+    ).toHaveTextContent(/^49 min left$/);
+    expect(screen.queryByText(/Building project/)).not.toBeInTheDocument();
+  });
+
+  it("shows a break, and can be hidden", () => {
+    setStore(({ state }) => {
+      state.pomodoro = { phase: "break", remaining_sec: 45 };
+    });
+    render(<Mini />);
+    expect(
+      screen.getByRole("timer", { name: "Break time left" }),
+    ).toHaveTextContent("45 sec left");
+    fireEvent.click(screen.getByRole("button", { name: "Hide the timer" }));
+    expect(api.dismissMini).toHaveBeenCalled();
+  });
+});
+
 describe("Rewards", () => {
   it("shows the level, XP to go and which badges are earned", () => {
     setStore();
@@ -356,6 +390,25 @@ describe("Pomodoro", () => {
     await waitFor(() => expect(api.startPomodoro).toHaveBeenCalledWith(null));
   });
 
+  it("carries on with the task focused on before the break", async () => {
+    // The low-priority task was the last focus, so it beats the high-priority one.
+    const focusing = makeSnapshot();
+    focusing.state.pomodoro = {
+      phase: "focus",
+      task_title: "Learn hooks",
+      started_at: "2026-11-05T09:00:00Z",
+      remaining_sec: 1,
+    };
+    // Through the store, as a push from the service arrives.
+    useStore.getState().setSnapshot(focusing);
+    setStore();
+    render(<Pomodoro />);
+    expect(screen.getByText("Carry on with:")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Start focus/ }));
+    await waitFor(() => expect(api.startPomodoro).toHaveBeenCalledWith(1));
+    localStorage.clear();
+  });
+
   it("counts down from what the service pushes, and can stop", async () => {
     setStore(({ state }) => {
       state.pomodoro = {
@@ -367,6 +420,7 @@ describe("Pomodoro", () => {
     });
     const { rerender } = render(<Pomodoro />);
     expect(screen.getByRole("timer")).toHaveTextContent("2:05");
+    expect(screen.getByText(/^Ends at /)).toBeInTheDocument();
     expect(screen.getByText("Focus: React")).toBeInTheDocument();
     expect(screen.getByLabelText("Monk Mode logo")).toHaveClass(
       "animate-breathe",

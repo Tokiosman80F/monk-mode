@@ -21,6 +21,8 @@ import About from "./screens/About";
 import FocusSettings from "./screens/FocusSettings";
 import Limits from "./screens/Limits";
 import LockScreen from "./screens/Lock";
+import Mini from "./screens/Mini";
+import { isMiniWindow } from "./windows";
 import Rewards from "./screens/Rewards";
 import Setup from "./screens/Setup";
 import StatsScreen from "./screens/Stats";
@@ -114,6 +116,8 @@ export default function App() {
   useServiceState();
   const setupDone = useStore((s) => s.snapshot?.state.settings.setup_done);
 
+  // The small timer window loads the same page.
+  if (isMiniWindow()) return <Mini />;
   // Only a service that has answered can say setup isn't done.
   if (setupDone === false) return <Setup />;
 

@@ -113,9 +113,29 @@ export function subtasksOverBy(task: Task): number {
   return Math.max(steps - task.allocated_min, 0);
 }
 
-/** The most important open task. */
-export function nextTask(tasks: Task[]): Task | undefined {
-  return sortTasks(tasks).find((task) => !task.done);
+/** The task last focused on if it's still open, so a break doesn't move you off it. Otherwise the
+ * most important open task. */
+export function nextTask(
+  tasks: Task[],
+  lastFocus: string | null = null,
+): Task | undefined {
+  const open = sortTasks(tasks).filter((task) => !task.done);
+  return open.find((task) => task.title === lastFocus) ?? open[0];
+}
+
+/** Must match `time_left` in app/src-tauri/src/notify.rs, which the tray uses. */
+export function timeLeftText(seconds: number): string {
+  return seconds < 60
+    ? `${seconds} sec left`
+    : `${Math.ceil(seconds / 60)} min left`;
+}
+
+/** The wall-clock time something `remainingSec` from `now` ends, like `10:50 AM`. */
+export function endsAt(remainingSec: number, now = new Date()): string {
+  return new Date(now.getTime() + remainingSec * 1000).toLocaleTimeString(
+    undefined,
+    { hour: "numeric", minute: "2-digit" },
+  );
 }
 
 function nextId(items: { id: number }[]): number {

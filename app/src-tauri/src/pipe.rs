@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
+use monk_core::models::PomodoroState;
 use monk_core::protocol::{
     ErrorCode, Message, Push, Reply, ReplyError, Request, Snapshot, PIPE_NAME,
 };
@@ -15,8 +16,8 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, WriteHalf};
 use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient};
 use tokio::sync::oneshot;
 
-use crate::notify;
 use crate::tray::Tray;
+use crate::{mini, notify, sound};
 
 const RETRY: Duration = Duration::from_secs(2);
 const REPLY_TIMEOUT: Duration = Duration::from_secs(10);
@@ -29,6 +30,8 @@ pub struct Pipe {
     pending: Mutex<HashMap<String, oneshot::Sender<Reply>>>,
     next_id: AtomicU64,
     last: Mutex<Option<Snapshot>>,
+    /// The task of the latest focus session, so the next one can carry on with it.
+    last_focus: Mutex<Option<String>>,
 }
 
 fn unavailable() -> ReplyError {
@@ -75,6 +78,10 @@ impl Pipe {
     pub fn last_snapshot(&self) -> Option<Snapshot> {
         self.last.lock().expect("snapshot lock").clone()
     }
+
+    pub fn last_focus(&self) -> Option<String> {
+        self.last_focus.lock().expect("last focus lock").clone()
+    }
 }
 
 /// Stays connected for as long as the app runs, retrying while the service is down.
@@ -120,6 +127,9 @@ async fn session(app: &AppHandle, client: NamedPipeClient) {
 
 fn apply_snapshot(app: &AppHandle, snapshot: Snapshot) {
     let pipe = app.state::<Pipe>();
+    if let PomodoroState::Focus { task_title, .. } = &snapshot.state.pomodoro {
+        *pipe.last_focus.lock().expect("last focus lock") = Some(task_title.clone());
+    }
     let previous = pipe
         .last
         .lock()
@@ -130,9 +140,14 @@ fn apply_snapshot(app: &AppHandle, snapshot: Snapshot) {
         for (title, body) in notify::notices(&previous.state, &snapshot.state) {
             let _ = app.notification().builder().title(title).body(body).show();
         }
+        if let Some(chime) = notify::chime(&previous.state, &snapshot.state) {
+            sound::play(chime);
+        }
     }
     if let Some(tray) = app.try_state::<Tray>() {
         tray.set_allowance(&notify::allowance_text(&snapshot.state));
+        tray.set_timer(notify::timer_text(&snapshot.state.pomodoro).as_deref());
     }
+    mini::sync(app, &snapshot.state.pomodoro);
     let _ = app.emit("state-changed", snapshot);
 }

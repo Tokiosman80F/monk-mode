@@ -11,11 +11,35 @@ interface ServiceStore {
   setConnected: (connected: boolean) => void;
 }
 
+const LAST_FOCUS_KEY = "lastFocusTask";
+
+/** The task of the latest focus session. Kept in storage, as closing the window ends this page. */
+export function lastFocusTask(): string | null {
+  try {
+    return localStorage.getItem(LAST_FOCUS_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function rememberFocus(snapshot: Snapshot) {
+  const { pomodoro } = snapshot.state;
+  if (pomodoro.phase !== "focus") return;
+  try {
+    localStorage.setItem(LAST_FOCUS_KEY, pomodoro.task_title);
+  } catch {
+    // Storage can be unavailable. The next session then starts on the most important task.
+  }
+}
+
 export const useStore = create<ServiceStore>((set) => ({
   snapshot: null,
   connected: null,
   // Hearing from the service at all means it's up.
-  setSnapshot: (snapshot) => set({ snapshot, connected: true }),
+  setSnapshot: (snapshot) => {
+    rememberFocus(snapshot);
+    set({ snapshot, connected: true });
+  },
   setConnected: (connected) => set({ connected }),
 }));
 

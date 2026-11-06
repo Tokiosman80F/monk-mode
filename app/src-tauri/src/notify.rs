@@ -2,8 +2,13 @@
 
 use monk_core::models::{AllowanceSite, PomodoroState, State};
 
+use crate::sound::Chime;
+
 const TWO_MIN_SEC: u32 = 120;
 const THIRTY_SEC: u32 = 30;
+/// Focus going straight to idle this close to the end ran out, rather than being stopped. The
+/// service pushes every second, so the last push before the end can show 1 or 2 seconds.
+const RAN_OUT_SEC: u32 = 2;
 
 fn left_sec(state: &State, site: &AllowanceSite) -> u32 {
     (site.daily_min * 60).saturating_sub(state.today.site_used(&site.domain))
@@ -30,15 +35,55 @@ pub fn allowance_text(state: &State) -> String {
     }
 }
 
-/// The task a one-click start from the tray counts towards: the most important unfinished one.
-/// With none, the session runs without a task.
-pub fn next_task(state: &State) -> Option<u32> {
-    state
-        .tasks
-        .iter()
-        .filter(|task| !task.done)
-        .min_by_key(|task| task.priority)
+/// The task a one-click start from the tray counts towards: the one last focused on, if it's still
+/// open, so a break doesn't move you off it. Otherwise the most important unfinished one. With
+/// none, the session runs without a task.
+pub fn next_task(state: &State, last_focus: Option<&str>) -> Option<u32> {
+    let open = || state.tasks.iter().filter(|task| !task.done);
+    open()
+        .find(|task| Some(task.title.as_str()) == last_focus)
+        .or_else(|| open().min_by_key(|task| task.priority))
         .map(|task| task.id)
+}
+
+/// Time left in words: whole minutes, rounded up, then seconds for the last minute.
+fn time_left(seconds: u32) -> String {
+    if seconds < 60 {
+        format!("{seconds} sec left")
+    } else {
+        format!("{} min left", seconds.div_ceil(60))
+    }
+}
+
+/// The tray tooltip's line while a session runs, like "Focus: 49 min left".
+pub fn timer_text(pomodoro: &PomodoroState) -> Option<String> {
+    match pomodoro {
+        PomodoroState::Idle => None,
+        PomodoroState::Focus { remaining_sec, .. } => {
+            Some(format!("Focus: {}", time_left(*remaining_sec)))
+        }
+        PomodoroState::Break { remaining_sec } => {
+            Some(format!("Break: {}", time_left(*remaining_sec)))
+        }
+    }
+}
+
+/// The sound for a session that ran to its end. Stopping one by hand plays nothing.
+pub fn chime(previous: &State, current: &State) -> Option<Chime> {
+    match (&previous.pomodoro, &current.pomodoro) {
+        (PomodoroState::Focus { .. }, PomodoroState::Break { .. }) => Some(Chime::FocusDone),
+        (PomodoroState::Focus { remaining_sec, .. }, PomodoroState::Idle)
+            if *remaining_sec <= RAN_OUT_SEC =>
+        {
+            Some(Chime::FocusDone)
+        }
+        (PomodoroState::Break { remaining_sec }, PomodoroState::Idle)
+            if *remaining_sec <= RAN_OUT_SEC =>
+        {
+            Some(Chime::BreakDone)
+        }
+        _ => None,
+    }
 }
 
 /// (title, body) for each notification to show.
@@ -66,15 +111,13 @@ pub fn notices(previous: &State, current: &State) -> Vec<(String, String)> {
         }
     }
 
-    match (&previous.pomodoro, &current.pomodoro) {
-        // Focus to idle with no break to follow is also a finish, but so is pressing Stop.
-        (PomodoroState::Focus { .. }, PomodoroState::Break { .. }) => {
+    match chime(previous, current) {
+        Some(Chime::FocusDone) if matches!(current.pomodoro, PomodoroState::Break { .. }) => {
             notice("Focus session done".to_string(), "Take a break.");
         }
-        (PomodoroState::Break { .. }, PomodoroState::Idle) => {
-            notice("Break is over".to_string(), "Back to work.");
-        }
-        _ => {}
+        Some(Chime::FocusDone) => notice("Focus session done".to_string(), "Well done."),
+        Some(Chime::BreakDone) => notice("Break is over".to_string(), "Back to work."),
+        None => {}
     }
 
     // Level 0 is the state before the service's first tick, not a real level.
@@ -171,8 +214,84 @@ mod tests {
         current.pomodoro = PomodoroState::Idle;
         assert_eq!(titles(&previous, &current), ["Break is over"]);
 
-        previous.pomodoro = focus();
+        previous.pomodoro = focus_left(600);
         assert!(titles(&previous, &current).is_empty());
+    }
+
+    fn chimes(previous: PomodoroState, current: PomodoroState) -> Option<Chime> {
+        let (mut before, mut after) = (state(0), state(0));
+        before.pomodoro = previous;
+        after.pomodoro = current;
+        chime(&before, &after)
+    }
+
+    fn focus_left(remaining_sec: u32) -> PomodoroState {
+        PomodoroState::Focus {
+            task_title: "React".to_string(),
+            started_at: Utc.with_ymd_and_hms(2026, 11, 5, 9, 0, 0).unwrap(),
+            remaining_sec,
+        }
+    }
+
+    #[test]
+    fn a_chime_plays_when_focus_or_a_break_runs_out() {
+        let on_break = PomodoroState::Break { remaining_sec: 600 };
+        assert_eq!(chimes(focus_left(1), on_break), Some(Chime::FocusDone));
+        // With no break set, focus goes straight to idle.
+        assert_eq!(
+            chimes(focus_left(1), PomodoroState::Idle),
+            Some(Chime::FocusDone)
+        );
+        assert_eq!(
+            chimes(
+                PomodoroState::Break { remaining_sec: 1 },
+                PomodoroState::Idle
+            ),
+            Some(Chime::BreakDone)
+        );
+    }
+
+    #[test]
+    fn stopping_early_or_skipping_a_break_is_silent() {
+        assert_eq!(chimes(focus_left(1200), PomodoroState::Idle), None);
+        assert_eq!(
+            chimes(
+                PomodoroState::Break { remaining_sec: 300 },
+                PomodoroState::Idle
+            ),
+            None
+        );
+        assert_eq!(chimes(PomodoroState::Idle, focus_left(3000)), None);
+        assert_eq!(chimes(focus_left(10), focus_left(9)), None);
+    }
+
+    #[test]
+    fn a_session_with_no_break_also_says_it_is_done() {
+        let mut previous = state(0);
+        previous.pomodoro = focus_left(1);
+        assert_eq!(titles(&previous, &state(0)), ["Focus session done"]);
+    }
+
+    #[test]
+    fn timer_text_counts_down_in_minutes_then_seconds() {
+        assert_eq!(timer_text(&PomodoroState::Idle), None);
+        assert_eq!(
+            timer_text(&focus_left(49 * 60)).as_deref(),
+            Some("Focus: 49 min left")
+        );
+        // A part-started minute still counts, so it never says 0 min.
+        assert_eq!(
+            timer_text(&focus_left(49 * 60 - 30)).as_deref(),
+            Some("Focus: 49 min left")
+        );
+        assert_eq!(
+            timer_text(&focus_left(60)).as_deref(),
+            Some("Focus: 1 min left")
+        );
+        assert_eq!(
+            timer_text(&PomodoroState::Break { remaining_sec: 45 }).as_deref(),
+            Some("Break: 45 sec left")
+        );
     }
 
     #[test]
@@ -199,14 +318,37 @@ mod tests {
             subtasks: vec![],
         };
         let mut s = state(0);
-        assert_eq!(next_task(&s), None);
+        assert_eq!(next_task(&s, None), None);
         s.tasks = vec![
             task(1, Priority::Low, false),
             task(2, Priority::High, true),
             task(3, Priority::Medium, false),
         ];
-        assert_eq!(next_task(&s), Some(3));
+        assert_eq!(next_task(&s, None), Some(3));
         s.tasks[1].done = false;
-        assert_eq!(next_task(&s), Some(2));
+        assert_eq!(next_task(&s, None), Some(2));
+    }
+
+    #[test]
+    fn next_task_stays_on_the_task_last_focused_on() {
+        let task = |id, title: &str, priority, done| Task {
+            id,
+            title: title.to_string(),
+            priority,
+            done,
+            done_on: None,
+            allocated_min: 0,
+            subtasks: vec![],
+        };
+        let mut s = state(0);
+        s.tasks = vec![
+            task(1, "Urgent thing", Priority::High, false),
+            task(2, "Building project", Priority::Low, false),
+        ];
+        assert_eq!(next_task(&s, Some("Building project")), Some(2));
+        // Once it's finished, or for a free session, the most important comes next.
+        s.tasks[1].done = true;
+        assert_eq!(next_task(&s, Some("Building project")), Some(1));
+        assert_eq!(next_task(&s, Some("Free focus")), Some(1));
     }
 }

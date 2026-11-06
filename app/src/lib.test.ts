@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   addMonths,
+  timeLeftText,
+  endsAt,
   addSubtask,
   addTask,
   browserName,
@@ -88,6 +90,33 @@ describe("tasks", () => {
   it("next up skips finished tasks", () => {
     expect(nextTask(tasks)?.id).toBe(2);
     expect(nextTask([{ ...plain, done: true }])).toBeUndefined();
+  });
+
+  it("next up stays on the task last focused on while it's open", () => {
+    expect(nextTask(tasks, "Learn hooks")?.id).toBe(1);
+    expect(
+      nextTask([{ ...plain, done: true }, withSteps], "Learn hooks")?.id,
+    ).toBe(2);
+    expect(nextTask(tasks, "Free focus")?.id).toBe(2);
+  });
+
+  it.each([
+    [49 * 60, "49 min left"],
+    [49 * 60 - 30, "49 min left"],
+    [60, "1 min left"],
+    [59, "59 sec left"],
+    [0, "0 sec left"],
+  ])("%i seconds reads as %s", (sec, text) => {
+    expect(timeLeftText(sec)).toBe(text);
+  });
+
+  it("works out when a session ends", () => {
+    const tenAm = new Date(2026, 10, 6, 10, 0, 0);
+    const expected = new Date(2026, 10, 6, 10, 50).toLocaleTimeString(
+      undefined,
+      { hour: "numeric", minute: "2-digit" },
+    );
+    expect(endsAt(50 * 60, tenAm)).toBe(expected);
   });
 
   it("adds up open time and warns when subtasks go over", () => {
