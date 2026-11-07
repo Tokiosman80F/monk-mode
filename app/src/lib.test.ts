@@ -18,6 +18,7 @@ import {
   plannedMin,
   PRIORITY_INFO,
   removeSubtask,
+  sessionRing,
   siteLeftSec,
   sortTasks,
   subtasksOverBy,
@@ -270,4 +271,33 @@ it("names browsers, and passes unknown ones through", () => {
 
 it("adds months", () => {
   expect(addMonths(new Date(2026, 10, 5), 3).getMonth()).toBe(1);
+});
+
+describe("sessionRing", () => {
+  it("splits a task's planned time into focus sessions", () => {
+    // 10 hours of 50 minute sessions, two done, 20 minutes into the third.
+    expect(sessionRing(600, 50, 2 * 3000 + 1200, 1800)).toEqual({
+      total: 12,
+      done: 2,
+      current: 0.4,
+    });
+    expect(sessionRing(600, 50, 3 * 3000, null)).toEqual({
+      total: 12,
+      done: 3,
+      current: null,
+    });
+  });
+
+  it("grows past the plan and has one segment with no plan", () => {
+    expect(sessionRing(50, 50, 3000, 3000)).toEqual({
+      total: 2,
+      done: 1,
+      current: 0,
+    });
+    expect(sessionRing(0, 50, 0, 3000)).toEqual({
+      total: 1,
+      done: 0,
+      current: 0,
+    });
+  });
 });

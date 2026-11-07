@@ -14,6 +14,8 @@ export const api = {
   startPomodoro: (taskId: number | null) =>
     invoke<Snapshot>("start_pomodoro", { taskId }),
   stopPomodoro: () => invoke<Snapshot>("stop_pomodoro"),
+  pausePomodoro: (paused: boolean) =>
+    invoke<Snapshot>("pause_pomodoro", { paused }),
   getStats: (days: number) => invoke<Stats>("get_stats", { days }),
   installService: () => invoke<void>("install_service"),
   openExtensionFolder: () => invoke<string>("open_extension_folder"),

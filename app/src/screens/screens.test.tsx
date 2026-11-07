@@ -26,6 +26,7 @@ vi.mock("../api", () => ({
     startLock: vi.fn(),
     startPomodoro: vi.fn(),
     stopPomodoro: vi.fn(),
+    pausePomodoro: vi.fn(),
     getStats: vi.fn(),
     installService: vi.fn(),
     openExtensionFolder: vi.fn(),
@@ -42,6 +43,7 @@ beforeEach(() => {
   vi.mocked(api.updateTasks).mockResolvedValue(makeSnapshot());
   vi.mocked(api.startPomodoro).mockResolvedValue(makeSnapshot());
   vi.mocked(api.stopPomodoro).mockResolvedValue(makeSnapshot());
+  vi.mocked(api.pausePomodoro).mockResolvedValue(makeSnapshot());
   vi.mocked(api.startLock).mockResolvedValue(makeSnapshot());
 });
 
@@ -335,6 +337,7 @@ describe("Mini timer", () => {
         task_title: "Building project",
         started_at: "2026-11-05T09:00:00Z",
         remaining_sec: 49 * 60,
+        paused: false,
       };
     });
     render(<Mini />);
@@ -398,6 +401,7 @@ describe("Pomodoro", () => {
       task_title: "Learn hooks",
       started_at: "2026-11-05T09:00:00Z",
       remaining_sec: 1,
+      paused: false,
     };
     // Through the store, as a push from the service arrives.
     useStore.getState().setSnapshot(focusing);
@@ -416,15 +420,14 @@ describe("Pomodoro", () => {
         task_title: "React",
         started_at: "2026-11-05T09:00:00Z",
         remaining_sec: 125,
+        paused: false,
       };
     });
     const { rerender } = render(<Pomodoro />);
     expect(screen.getByRole("timer")).toHaveTextContent("2:05");
     expect(screen.getByText(/^Ends at /)).toBeInTheDocument();
     expect(screen.getByText("Focus: React")).toBeInTheDocument();
-    expect(screen.getByLabelText("Monk Mode logo")).toHaveClass(
-      "animate-breathe",
-    );
+    expect(screen.getByText("Session 1 of 1")).toBeInTheDocument();
 
     setStore(({ state }) => {
       state.pomodoro = {
@@ -432,6 +435,7 @@ describe("Pomodoro", () => {
         task_title: "React",
         started_at: "2026-11-05T09:00:00Z",
         remaining_sec: 124,
+        paused: false,
       };
     });
     rerender(<Pomodoro />);
@@ -439,6 +443,50 @@ describe("Pomodoro", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Stop/ }));
     await waitFor(() => expect(api.stopPomodoro).toHaveBeenCalled());
+  });
+
+  it("shows a segment for each session of the task, and can pause", async () => {
+    setStore(({ state }) => {
+      state.settings.pomodoro_focus_min = 50;
+      state.tasks = [
+        {
+          id: 1,
+          title: "Project building",
+          priority: "high",
+          done: false,
+          done_on: null,
+          allocated_min: 600,
+          subtasks: [],
+        },
+      ];
+      state.today.focus_sec = { "Project building": 2 * 3000 + 1200 };
+      state.pomodoro = {
+        phase: "focus",
+        task_title: "Project building",
+        started_at: "2026-11-05T09:00:00Z",
+        remaining_sec: 1800,
+        paused: false,
+      };
+    });
+    render(<Pomodoro />);
+    expect(screen.getByText("Session 3 of 12")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    await waitFor(() => expect(api.pausePomodoro).toHaveBeenCalledWith(true));
+  });
+
+  it("offers to resume a paused session", () => {
+    setStore(({ state }) => {
+      state.pomodoro = {
+        phase: "focus",
+        task_title: "React",
+        started_at: "2026-11-05T09:00:00Z",
+        remaining_sec: 600,
+        paused: true,
+      };
+    });
+    render(<Pomodoro />);
+    expect(screen.getByRole("button", { name: "Resume" })).toBeInTheDocument();
+    expect(screen.queryByText(/^Ends at/)).not.toBeInTheDocument();
   });
 
   it("offers to skip a break", () => {

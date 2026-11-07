@@ -3,7 +3,7 @@ import type { ActiveTab } from "./ActiveTab";
 import type { Settings } from "./Settings";
 import type { Task } from "./Task";
 
-export type Request = { id: string, } & ({ "type": "get_state" } | { "type": "update_settings", "payload": Settings } | { "type": "start_lock", "payload": { ends_at: string, } } | { "type": "update_tasks", "payload": Array<Task> } | { "type": "start_pomodoro", "payload": { task_id: number | null, } } | { "type": "stop_pomodoro" } | { "type": "get_stats", "payload": { days: number, } } | { "type": "ext_hello", "payload": { token: string, 
+export type Request = { id: string, } & ({ "type": "get_state" } | { "type": "update_settings", "payload": Settings } | { "type": "start_lock", "payload": { ends_at: string, } } | { "type": "update_tasks", "payload": Array<Task> } | { "type": "start_pomodoro", "payload": { task_id: number | null, } } | { "type": "stop_pomodoro" } | { "type": "pause_pomodoro", "payload": { paused: boolean, } } | { "type": "get_stats", "payload": { days: number, } } | { "type": "ext_hello", "payload": { token: string, 
 /**
  * Process name, such as `chrome.exe`.
  */

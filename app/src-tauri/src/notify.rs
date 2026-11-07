@@ -59,6 +59,7 @@ fn time_left(seconds: u32) -> String {
 pub fn timer_text(pomodoro: &PomodoroState) -> Option<String> {
     match pomodoro {
         PomodoroState::Idle => None,
+        PomodoroState::Focus { paused: true, .. } => Some("Focus: paused".to_string()),
         PomodoroState::Focus { remaining_sec, .. } => {
             Some(format!("Focus: {}", time_left(*remaining_sec)))
         }
@@ -199,6 +200,7 @@ mod tests {
             task_title: "React".to_string(),
             started_at: Utc.with_ymd_and_hms(2026, 11, 5, 9, 0, 0).unwrap(),
             remaining_sec: 1,
+            paused: false,
         }
     }
 
@@ -230,6 +232,7 @@ mod tests {
             task_title: "React".to_string(),
             started_at: Utc.with_ymd_and_hms(2026, 11, 5, 9, 0, 0).unwrap(),
             remaining_sec,
+            paused: false,
         }
     }
 

@@ -23,6 +23,9 @@ pub enum Message {
         task_id: Option<u32>,
     },
     StopPomodoro,
+    PausePomodoro {
+        paused: bool,
+    },
     GetStats {
         days: u32,
     },

@@ -222,6 +222,9 @@ pub enum PomodoroState {
         task_title: String,
         started_at: DateTime<Utc>,
         remaining_sec: u32,
+        /// Paused sessions don't count down, but sites stay closed.
+        #[serde(default)]
+        paused: bool,
     },
     Break {
         remaining_sec: u32,

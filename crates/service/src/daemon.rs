@@ -6,7 +6,7 @@ use std::io;
 
 use chrono::{DateTime, Utc};
 use monk_core::engine::{
-    compute_blocked, start_pomodoro, stop_pomodoro, tick, ActiveTab, BlockedSet, Event,
+    compute_blocked, pause_pomodoro, start_pomodoro, stop_pomodoro, tick, ActiveTab, BlockedSet, Event,
 };
 use monk_core::lock::{
     effective_now, next_lock, validate_change, validate_settings, NextLockError,
@@ -405,6 +405,10 @@ impl<P: Platform> Daemon<P> {
             }
             (Client::Ui, Message::StartPomodoro { task_id }) => {
                 start_pomodoro(&mut self.state, task_id, now).map_err(invalid)?;
+                Ok(self.state_json())
+            }
+            (Client::Ui, Message::PausePomodoro { paused }) => {
+                pause_pomodoro(&mut self.state, paused).map_err(invalid)?;
                 Ok(self.state_json())
             }
             (Client::Ui, Message::StopPomodoro) => {

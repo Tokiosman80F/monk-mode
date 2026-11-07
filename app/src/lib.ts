@@ -273,3 +273,29 @@ export function addMonths(from: Date, months: number): Date {
   date.setMonth(date.getMonth() + months);
   return date;
 }
+
+/**
+ * The focus ring: one segment per focus session in the task's planned time.
+ * `remainingSec` is null during a break.
+ */
+export function sessionRing(
+  plannedMin: number,
+  focusMin: number,
+  spentSec: number,
+  remainingSec: number | null,
+): { total: number; done: number; current: number | null } {
+  const length = Math.max(focusMin, 1) * 60;
+  const inCurrent =
+    remainingSec === null ? 0 : Math.max(0, length - remainingSec);
+  const done = Math.max(0, Math.floor((spentSec - inCurrent) / length));
+  const total = Math.max(
+    Math.ceil(plannedMin / Math.max(focusMin, 1)),
+    done + (remainingSec === null ? 0 : 1),
+    1,
+  );
+  return {
+    total,
+    done,
+    current: remainingSec === null ? null : inCurrent / length,
+  };
+}

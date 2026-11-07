@@ -110,6 +110,7 @@ describe("App", () => {
           task_title: "React",
           started_at: "2026-11-05T09:00:00Z",
           remaining_sec: 60,
+          paused: false,
         };
       });
     });

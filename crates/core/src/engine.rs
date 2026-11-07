@@ -58,6 +58,8 @@ pub enum PomodoroError {
     AlreadyRunning,
     #[error("That task no longer exists.")]
     UnknownTask,
+    #[error("No focus session is running.")]
+    NotFocusing,
 }
 
 /// Advances the state by `elapsed_sec`. Call once per service loop.
@@ -167,8 +169,20 @@ pub fn start_pomodoro(
         task_title,
         started_at: now.utc,
         remaining_sec: state.settings.pomodoro_focus_min * 60,
+        paused: false,
     };
     Ok(())
+}
+
+/// Pauses or resumes the running focus session.
+pub fn pause_pomodoro(state: &mut State, pause: bool) -> Result<(), PomodoroError> {
+    match &mut state.pomodoro {
+        PomodoroState::Focus { paused, .. } => {
+            *paused = pause;
+            Ok(())
+        }
+        _ => Err(PomodoroError::NotFocusing),
+    }
 }
 
 /// Stops any session. Returns the focus session to record, if one was running.
@@ -193,6 +207,7 @@ fn tick_pomodoro(state: &mut State, elapsed_sec: u32, now: Now, events: &mut Vec
     let break_sec = state.settings.pomodoro_break_min * 60;
     match &mut state.pomodoro {
         PomodoroState::Idle => {}
+        PomodoroState::Focus { paused: true, .. } => {}
         PomodoroState::Focus {
             task_title,
             remaining_sec,
@@ -541,6 +556,22 @@ mod tests {
             start_pomodoro(&mut s, task, now()),
             Err(PomodoroError::AlreadyRunning)
         );
+    }
+
+    #[test]
+    fn a_paused_session_stops_counting_but_keeps_sites_closed() {
+        let mut s = state();
+        let task = with_task(&mut s, "React");
+        assert_eq!(pause_pomodoro(&mut s, true), Err(PomodoroError::NotFocusing));
+        start_pomodoro(&mut s, task, now()).unwrap();
+        tick(&mut s, 60, now(), None);
+        pause_pomodoro(&mut s, true).unwrap();
+        tick(&mut s, 600, now(), None);
+        assert_eq!(s.today.focus_sec["React"], 60);
+        assert!(is_focusing(&s));
+        pause_pomodoro(&mut s, false).unwrap();
+        tick(&mut s, 60, now(), None);
+        assert_eq!(s.today.focus_sec["React"], 120);
     }
 
     #[test]

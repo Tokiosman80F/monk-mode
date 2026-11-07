@@ -52,6 +52,11 @@ async fn stop_pomodoro(pipe: State<'_, Pipe>) -> CommandResult {
 }
 
 #[tauri::command]
+async fn pause_pomodoro(pipe: State<'_, Pipe>, paused: bool) -> CommandResult {
+    pipe.call(Message::PausePomodoro { paused }).await
+}
+
+#[tauri::command]
 async fn get_stats(pipe: State<'_, Pipe>, days: u32) -> CommandResult {
     pipe.call(Message::GetStats { days }).await
 }
@@ -128,6 +133,7 @@ fn main() {
             update_tasks,
             start_pomodoro,
             stop_pomodoro,
+            pause_pomodoro,
             get_stats,
             install_service,
             open_extension_folder,
