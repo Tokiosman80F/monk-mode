@@ -562,7 +562,10 @@ mod tests {
     fn a_paused_session_stops_counting_but_keeps_sites_closed() {
         let mut s = state();
         let task = with_task(&mut s, "React");
-        assert_eq!(pause_pomodoro(&mut s, true), Err(PomodoroError::NotFocusing));
+        assert_eq!(
+            pause_pomodoro(&mut s, true),
+            Err(PomodoroError::NotFocusing)
+        );
         start_pomodoro(&mut s, task, now()).unwrap();
         tick(&mut s, 60, now(), None);
         pause_pomodoro(&mut s, true).unwrap();

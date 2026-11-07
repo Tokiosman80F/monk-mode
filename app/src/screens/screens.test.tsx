@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../api";
@@ -505,6 +511,82 @@ describe("Pomodoro", () => {
     render(<Pomodoro />);
     fireEvent.click(screen.getByRole("button", { name: /Start focus/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Nope.");
+  });
+});
+
+describe("Renaming", () => {
+  it("renames a task and a subtask", async () => {
+    setStore(({ state }) => {
+      state.tasks = [
+        {
+          id: 1,
+          title: "Old task",
+          priority: "high",
+          done: false,
+          done_on: null,
+          allocated_min: 60,
+          subtasks: [
+            { id: 1, title: "Old step", done: false, allocated_min: 0 },
+          ],
+        },
+      ];
+    });
+    render(<Tasks />);
+    fireEvent.click(screen.getByRole("button", { name: "Rename Old task" }));
+    const field = screen.getByLabelText("New name for Old task");
+    fireEvent.change(field, { target: { value: "  New task  " } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    await waitFor(() => expect(api.updateTasks).toHaveBeenCalled());
+    expect(savedTasks()[0].title).toBe("New task");
+
+    cleanup();
+    vi.mocked(api.updateTasks).mockClear();
+    setStore(({ state }) => {
+      state.tasks = [
+        {
+          id: 1,
+          title: "Old task",
+          priority: "high",
+          done: false,
+          done_on: null,
+          allocated_min: 60,
+          subtasks: [
+            { id: 1, title: "Old step", done: false, allocated_min: 0 },
+          ],
+        },
+      ];
+    });
+    render(<Tasks />);
+    fireEvent.click(screen.getByRole("button", { name: /Show subtasks/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Rename Old step" }));
+    const step = screen.getByLabelText("New name for Old step");
+    fireEvent.change(step, { target: { value: "New step" } });
+    fireEvent.blur(step);
+    await waitFor(() => expect(api.updateTasks).toHaveBeenCalled());
+    expect(savedTasks()[0].subtasks[0].title).toBe("New step");
+  });
+
+  it("keeps the name when the field is cleared or escaped", () => {
+    setStore(({ state }) => {
+      state.tasks = [
+        {
+          id: 1,
+          title: "Keep",
+          priority: "low",
+          done: false,
+          done_on: null,
+          allocated_min: 60,
+          subtasks: [],
+        },
+      ];
+    });
+    render(<Tasks />);
+    fireEvent.click(screen.getByRole("button", { name: "Rename Keep" }));
+    const field = screen.getByLabelText("New name for Keep");
+    fireEvent.change(field, { target: { value: "   " } });
+    fireEvent.blur(field);
+    expect(api.updateTasks).not.toHaveBeenCalled();
+    expect(screen.getByText("Keep")).toBeInTheDocument();
   });
 });
 

@@ -1,4 +1,4 @@
-import { ChevronRight, Play, Plus, Trash2, X } from "lucide-react";
+import { ChevronRight, Pencil, Play, Plus, Trash2, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { api } from "../api";
 import {
@@ -92,6 +92,65 @@ function TimePill({
       placeholder="1h 30m"
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+        if (e.key === "Escape") setDraft(null);
+      }}
+    />
+  );
+}
+
+/** A task or subtask name, which becomes a field when its pencil is clicked. */
+function Title({
+  title,
+  done,
+  className,
+  onChange,
+}: {
+  title: string;
+  done: boolean;
+  className: string;
+  onChange: (title: string) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+
+  if (draft === null) {
+    return (
+      <span className="group/title flex min-w-0 flex-1 items-center gap-1">
+        <span
+          title={title}
+          className={`min-w-0 truncate ${className} ${done ? "text-neutral line-through" : ""}`}
+          onDoubleClick={() => setDraft(title)}
+        >
+          {title}
+        </span>
+        <button
+          type="button"
+          className="btn btn-ghost btn-xs px-1 opacity-0 transition-opacity duration-150 focus:opacity-100 group-hover/title:opacity-100"
+          aria-label={`Rename ${title}`}
+          onClick={() => setDraft(title)}
+        >
+          <Pencil size={12} aria-hidden="true" />
+        </button>
+      </span>
+    );
+  }
+
+  const commit = () => {
+    const name = draft.trim();
+    if (name && name !== title) onChange(name);
+    setDraft(null);
+  };
+  return (
+    <input
+      autoFocus
+      className={`input input-xs input-bordered min-w-0 flex-1 ${className}`}
+      aria-label={`New name for ${title}`}
+      maxLength={200}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onFocus={(e) => e.currentTarget.select()}
       onBlur={commit}
       onKeyDown={(e) => {
         if (e.key === "Enter") e.currentTarget.blur();
@@ -211,12 +270,12 @@ function TaskRow({
           checked={task.done}
           onChange={tick}
         />
-        <span
+        <Title
           title={task.title}
-          className={`min-w-0 flex-1 truncate text-[15px] ${task.done ? "text-neutral line-through" : ""}`}
-        >
-          {task.title}
-        </span>
+          done={task.done}
+          className="text-[15px]"
+          onChange={(title) => onChange({ ...task, title })}
+        />
         {reward !== null && (
           <span className="animate-xp-pop whitespace-nowrap text-xs font-semibold text-accent">
             +{reward} XP
@@ -276,11 +335,19 @@ function TaskRow({
                 checked={subtask.done}
                 onChange={() => tickStep(subtask.id, subtask.done)}
               />
-              <span
-                className={`min-w-0 flex-1 truncate text-sm ${subtask.done ? "text-neutral line-through" : ""}`}
-              >
-                {subtask.title}
-              </span>
+              <Title
+                title={subtask.title}
+                done={subtask.done}
+                className="text-sm"
+                onChange={(title) =>
+                  onChange({
+                    ...task,
+                    subtasks: task.subtasks.map((s) =>
+                      s.id === subtask.id ? { ...s, title } : s,
+                    ),
+                  })
+                }
+              />
               <TimePill
                 label={`Time for ${subtask.title}`}
                 minutes={subtask.allocated_min}

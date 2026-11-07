@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use chrono::NaiveDate;
 use thiserror::Error;
 
-use crate::models::{Priority, State, Task};
+use crate::models::{PomodoroState, Priority, State, Task};
 use crate::progress::progress;
 
 const MAX_TITLE_CHARS: usize = 200;
@@ -86,8 +86,12 @@ pub fn apply_tasks(
 ) -> Result<(), TaskError> {
     validate(&tasks)?;
     let (mut gained, mut lost, mut done, mut undone) = (0, 0, 0, 0);
+    let mut renames = Vec::new();
     for task in &mut tasks {
         let old = state.tasks.iter().find(|t| t.id == task.id);
+        if let Some(old) = old.filter(|t| t.title != task.title) {
+            renames.push((old.title.clone(), task.title.clone()));
+        }
         let was_done = old.is_some_and(|t| t.done);
         task.done_on = match (task.done, was_done) {
             (false, _) => None,
@@ -103,6 +107,17 @@ pub fn apply_tasks(
         lost += before.saturating_sub(after);
     }
     state.tasks = tasks;
+    // Focus time and a running session follow a renamed task.
+    for (from, to) in renames {
+        if let Some(sec) = state.today.focus_sec.remove(&from) {
+            *state.today.focus_sec.entry(to.clone()).or_default() += sec;
+        }
+        if let PomodoroState::Focus { task_title, .. } = &mut state.pomodoro {
+            if *task_title == from {
+                *task_title = to;
+            }
+        }
+    }
     let day = &mut state.today;
     day.task_xp = (day.task_xp + gained).saturating_sub(lost);
     day.tasks_done = (day.tasks_done + done).saturating_sub(undone);
@@ -273,6 +288,22 @@ mod tests {
         let tasks: Vec<Task> = serde_json::from_str(stored).unwrap();
         assert_eq!(tasks[0].allocated_min, 0);
         assert_eq!(tasks[0].subtasks[0].allocated_min, 0);
+    }
+
+    #[test]
+    fn renaming_a_task_keeps_its_focus_time_and_session() {
+        let mut s = State::new(date(5));
+        let mut t = task(1, Priority::High, false);
+        apply(&mut s, vec![t.clone()]).unwrap();
+        s.today.focus_sec.insert(t.title.clone(), 600);
+        let now = crate::models::Now::new(chrono::Utc::now(), &chrono::Utc);
+        crate::engine::start_pomodoro(&mut s, Some(1), now).unwrap();
+        t.title = "Renamed".to_string();
+        apply(&mut s, vec![t]).unwrap();
+        assert_eq!(s.today.focus_sec.get("Renamed"), Some(&600));
+        assert!(
+            matches!(&s.pomodoro, PomodoroState::Focus { task_title, .. } if task_title == "Renamed")
+        );
     }
 
     #[test]

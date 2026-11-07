@@ -6,7 +6,8 @@ use std::io;
 
 use chrono::{DateTime, Utc};
 use monk_core::engine::{
-    compute_blocked, pause_pomodoro, start_pomodoro, stop_pomodoro, tick, ActiveTab, BlockedSet, Event,
+    compute_blocked, pause_pomodoro, start_pomodoro, stop_pomodoro, tick, ActiveTab, BlockedSet,
+    Event,
 };
 use monk_core::lock::{
     effective_now, next_lock, validate_change, validate_settings, NextLockError,
