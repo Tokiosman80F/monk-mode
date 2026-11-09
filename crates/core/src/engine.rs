@@ -14,6 +14,11 @@ const WARN_30S_SEC: u32 = 30;
 /// A session started with no task picked, such as from the tray with an empty list.
 pub const FREE_FOCUS: &str = "Free focus";
 
+/// Comma-separated domains blocked by this build, whatever the settings say and with no end date.
+/// Set at compile time, so one person can make a block that neither the app nor the database can
+/// lift. Unset in normal builds.
+const PERMANENT_BLOCK: Option<&str> = option_env!("MONK_PERMANENT_BLOCK");
+
 const SHORTS_PATTERNS: [&str; 5] = [
     "||youtube.com/shorts/",
     "||instagram.com/reels/",
@@ -240,6 +245,15 @@ fn tick_pomodoro(state: &mut State, elapsed_sec: u32, now: Now, events: &mut Vec
 /// Everything that must be blocked right now. `extension_connected` is false only when a
 /// browser has been running without the extension for too long (F4).
 pub fn compute_blocked(state: &State, now: Now, extension_connected: bool) -> BlockedSet {
+    blocked_with(state, now, extension_connected, PERMANENT_BLOCK)
+}
+
+fn blocked_with(
+    state: &State,
+    now: Now,
+    extension_connected: bool,
+    permanent: Option<&str>,
+) -> BlockedSet {
     // A stored day that's already over has no bearing on today's allowance.
     let is_today = state.today.date == now.local_date;
     let used_up = |site: &AllowanceSite| {
@@ -253,7 +267,15 @@ pub fn compute_blocked(state: &State, now: Now, extension_connected: bool) -> Bl
     let block_all = is_focusing(state) || !extension_connected;
     let allowance = &state.settings.allowance_sites;
 
+    let permanent: Vec<String> = permanent
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|d| !d.is_empty() && !state.settings.always_blocked.iter().any(|b| b == d))
+        .map(str::to_string)
+        .collect();
     let mut sites: Vec<&String> = state.settings.always_blocked.iter().collect();
+    sites.extend(&permanent);
     sites.extend(
         allowance
             .iter()
@@ -659,6 +681,20 @@ mod tests {
 
     fn has(set: &BlockedSet, domain: &str) -> bool {
         set.hosts_domains.iter().any(|d| d == domain)
+    }
+
+    #[test]
+    fn a_permanent_block_ignores_the_settings_and_is_not_listed_twice() {
+        let mut s = state();
+        s.settings.always_blocked.retain(|d| d != "tiktok.com");
+        let list = Some("tiktok.com, tiktokv.com");
+        let set = blocked_with(&s, now(), true, list);
+        assert!(has(&set, "tiktok.com"));
+        assert!(has(&set, "www.tiktok.com"));
+        let rules = |p: &str| set.url_patterns.iter().filter(|x| *x == p).count();
+        assert_eq!(rules("||tiktok.com^"), 1);
+        assert_eq!(rules("||tiktokv.com^"), 1);
+        assert!(!has(&blocked_with(&s, now(), true, None), "tiktok.com"));
     }
 
     #[test]
