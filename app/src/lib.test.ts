@@ -10,6 +10,7 @@ import {
   fillDays,
   fromDateKey,
   formatClock,
+  nextFreeId,
   formatDuration,
   formatLeft,
   isLocked,
@@ -309,5 +310,13 @@ describe("fromDateKey", () => {
     expect([date.getFullYear(), date.getMonth(), date.getDate()]).toEqual([
       2026, 10, 12,
     ]);
+  });
+});
+
+describe("nextFreeId", () => {
+  it("never goes below the service's floor", () => {
+    expect(nextFreeId([{ id: 2 }], 1)).toBe(3);
+    expect(nextFreeId([{ id: 2 }], 40)).toBe(40);
+    expect(nextFreeId([], 7)).toBe(7);
   });
 });

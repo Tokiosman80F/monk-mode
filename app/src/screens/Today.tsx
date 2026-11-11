@@ -3,6 +3,7 @@ import { browserName, formatDuration, plannedMin, totalFocusSec } from "../lib";
 import { useStore } from "../store";
 import { DayHeader, LevelBar, PageTitle } from "../ui";
 import Pomodoro from "./Pomodoro";
+import SmallWork from "./SmallWork";
 import Tasks from "./Tasks";
 
 export default function Today() {
@@ -66,6 +67,7 @@ export default function Today() {
 
       <Pomodoro />
       <Tasks />
+      <SmallWork />
     </>
   );
 }

@@ -142,16 +142,25 @@ function nextId(items: { id: number }[]): number {
   return Math.max(0, ...items.map((item) => item.id)) + 1;
 }
 
+/** Tasks and small work of earlier days keep their ids, so new ones start at `floor`. */
+export function nextFreeId(items: { id: number }[], floor: number): number {
+  return Math.max(nextId(items), floor);
+}
+
+/** The most tasks a day can hold. The service enforces it too. */
+export const MAX_TASKS = 4;
+
 export function addTask(
   tasks: Task[],
   title: string,
   priority: Priority,
   allocated_min: number,
+  floor = 1,
 ): Task[] {
   return [
     ...tasks,
     {
-      id: nextId(tasks),
+      id: nextFreeId(tasks, floor),
       title,
       priority,
       done: false,

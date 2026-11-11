@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { api } from "../api";
 import {
   PRIORITIES,
+  MAX_TASKS,
   PRIORITY_INFO,
   SUBTASK_XP,
   addSubtask,
@@ -102,7 +103,7 @@ function TimePill({
 }
 
 /** A task or subtask name, which becomes a field when its pencil is clicked. */
-function Title({
+export function Title({
   title,
   done,
   className,
@@ -490,14 +491,27 @@ export default function Tasks() {
         </span>
       }
     >
-      <AddTaskForm
-        onAdd={async (title, priority, minutes) => {
-          const next = addTask(tasks, title, priority, minutes);
-          // Open the new task, so its subtasks can be added next.
-          setJustAdded(next[next.length - 1].id);
-          await save(next);
-        }}
-      />
+      {tasks.length < MAX_TASKS ? (
+        <AddTaskForm
+          onAdd={async (title, priority, minutes) => {
+            const next = addTask(
+              tasks,
+              title,
+              priority,
+              minutes,
+              state.next_id,
+            );
+            // Open the new task, so its subtasks can be added next.
+            setJustAdded(next[next.length - 1].id);
+            await save(next);
+          }}
+        />
+      ) : (
+        <p role="status" className="text-sm text-neutral">
+          That's {MAX_TASKS} tasks, the most for a day. Quick jobs go in small
+          work below.
+        </p>
+      )}
       <ErrorNote message={error} />
 
       {tasks.length === 0 ? (
@@ -525,7 +539,8 @@ export default function Tasks() {
         </ul>
       )}
       <p className="text-xs text-neutral">
-        Unfinished tasks carry over to tomorrow.
+        Up to {MAX_TASKS} tasks a day. At 6 AM the list starts fresh, and
+        today's tasks stay in your history.
       </p>
     </Card>
   );

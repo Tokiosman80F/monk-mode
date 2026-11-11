@@ -6,6 +6,7 @@ use chrono::NaiveDate;
 use thiserror::Error;
 
 use crate::models::{PomodoroState, Priority, State, Task};
+use crate::planner::{SmallItem, MAX_TASKS_PER_DAY};
 use crate::progress::progress;
 
 const MAX_TITLE_CHARS: usize = 200;
@@ -22,6 +23,8 @@ pub enum TaskError {
     DuplicateId,
     #[error("A task can't be given more than 24 hours.")]
     TooMuchTime,
+    #[error("A day can have at most {MAX_TASKS_PER_DAY} tasks. Put quick jobs in small work.")]
+    TooManyTasks,
 }
 
 pub fn priority_xp(priority: Priority) -> u32 {
@@ -54,6 +57,9 @@ fn check_title(title: &str) -> Result<(), TaskError> {
 }
 
 fn validate(tasks: &[Task]) -> Result<(), TaskError> {
+    if tasks.len() > MAX_TASKS_PER_DAY {
+        return Err(TaskError::TooManyTasks);
+    }
     let mut ids = HashSet::new();
     for task in tasks {
         check_title(&task.title)?;
@@ -107,6 +113,7 @@ pub fn apply_tasks(
         lost += before.saturating_sub(after);
     }
     state.tasks = tasks;
+    bump_next_id(state);
     // Focus time and a running session follow a renamed task.
     for (from, to) in renames {
         if let Some(sec) = state.today.focus_sec.remove(&from) {
@@ -129,9 +136,53 @@ pub fn apply_tasks(
     Ok(())
 }
 
-/// Finished tasks stay for the day they were finished. Unfinished ones carry over.
-pub fn prune_tasks(tasks: &mut Vec<Task>, today: NaiveDate) {
-    tasks.retain(|t| !t.done || t.done_on == Some(today));
+/// Replaces today's small work. The service sets each item's date, and where it was carried
+/// from, so a client can't move items between days.
+pub fn apply_small_items(
+    state: &mut State,
+    mut items: Vec<SmallItem>,
+    today: NaiveDate,
+) -> Result<(), TaskError> {
+    let mut ids = HashSet::new();
+    for item in &mut items {
+        check_title(&item.title)?;
+        if !ids.insert(item.id) {
+            return Err(TaskError::DuplicateId);
+        }
+        item.date = today;
+        item.carried_from_date = state
+            .small_items
+            .iter()
+            .find(|old| old.id == item.id)
+            .and_then(|old| old.carried_from_date);
+    }
+    state.small_items = items;
+    bump_next_id(state);
+    Ok(())
+}
+
+/// The 06:00 reset. Tasks stay in the database under their own day, and only today's are shown,
+/// so the list starts empty. Unticked small work moves to the new day.
+pub fn start_day(state: &mut State, today: NaiveDate) {
+    state.tasks.clear();
+    state.small_items.retain(|item| !item.done);
+    for item in &mut state.small_items {
+        if item.date < today {
+            item.carried_from_date.get_or_insert(item.date);
+            item.date = today;
+        }
+    }
+}
+
+fn bump_next_id(state: &mut State) {
+    let used = state
+        .tasks
+        .iter()
+        .map(|t| t.id)
+        .chain(state.small_items.iter().map(|i| i.id))
+        .max()
+        .unwrap_or(0);
+    state.next_id = state.next_id.max(used + 1);
 }
 
 #[cfg(test)]
@@ -323,17 +374,72 @@ mod tests {
     }
 
     #[test]
-    fn a_new_day_drops_finished_tasks_and_keeps_the_rest() {
+    fn a_fifth_task_is_refused_and_changes_nothing() {
         let mut s = State::new(date(5));
-        apply(
-            &mut s,
-            vec![task(1, Priority::High, true), task(2, Priority::Low, false)],
-        )
-        .unwrap();
-        prune_tasks(&mut s.tasks, date(5));
-        assert_eq!(s.tasks.len(), 2);
-        prune_tasks(&mut s.tasks, date(6));
-        assert_eq!(s.tasks.len(), 1);
-        assert_eq!(s.tasks[0].id, 2);
+        let four: Vec<_> = (1..=4).map(|id| task(id, Priority::Low, false)).collect();
+        apply(&mut s, four.clone()).unwrap();
+        let mut five = four.clone();
+        five.push(task(5, Priority::High, false));
+        assert_eq!(apply(&mut s, five), Err(TaskError::TooManyTasks));
+        assert_eq!(s.tasks, four);
+    }
+
+    #[test]
+    fn new_ids_never_reuse_one_already_given_out() {
+        let mut s = State::new(date(5));
+        apply(&mut s, vec![task(7, Priority::Low, false)]).unwrap();
+        assert_eq!(s.next_id, 8);
+        // Removing it doesn't free 7: the archive may still hold it.
+        apply(&mut s, vec![]).unwrap();
+        assert_eq!(s.next_id, 8);
+    }
+
+    fn item(id: u32, done: bool) -> SmallItem {
+        SmallItem {
+            id,
+            date: date(1),
+            title: format!("Call {id}"),
+            done,
+            carried_from_date: None,
+        }
+    }
+
+    #[test]
+    fn small_work_has_no_limit_and_is_dated_by_the_service() {
+        let mut s = State::new(date(5));
+        let items: Vec<_> = (1..=12).map(|id| item(id, false)).collect();
+        apply_small_items(&mut s, items, date(5)).unwrap();
+        assert_eq!(s.small_items.len(), 12);
+        assert!(s.small_items.iter().all(|i| i.date == date(5)));
+        assert!(s.small_items.iter().all(|i| i.carried_from_date.is_none()));
+        // Small work isn't a task: no XP, nothing done.
+        assert_eq!(s.today.task_xp, 0);
+        let mut blank = item(13, false);
+        blank.title = " ".to_string();
+        assert_eq!(
+            apply_small_items(&mut s, vec![blank], date(5)),
+            Err(TaskError::Unnamed)
+        );
+    }
+
+    #[test]
+    fn a_new_day_clears_tasks_and_carries_unticked_small_work() {
+        let mut s = State::new(date(5));
+        apply(&mut s, vec![task(1, Priority::High, false)]).unwrap();
+        apply_small_items(&mut s, vec![item(2, false), item(3, true)], date(5)).unwrap();
+        start_day(&mut s, date(6));
+        assert!(s.tasks.is_empty());
+        assert_eq!(s.small_items.len(), 1);
+        assert_eq!(s.small_items[0].id, 2);
+        assert_eq!(s.small_items[0].date, date(6));
+        assert_eq!(s.small_items[0].carried_from_date, Some(date(5)));
+        // Carried again, it remembers the first day.
+        start_day(&mut s, date(7));
+        assert_eq!(s.small_items[0].carried_from_date, Some(date(5)));
+        // The client can't change where it came from.
+        let mut faked = s.small_items.clone();
+        faked[0].carried_from_date = None;
+        apply_small_items(&mut s, faked, date(7)).unwrap();
+        assert_eq!(s.small_items[0].carried_from_date, Some(date(5)));
     }
 }

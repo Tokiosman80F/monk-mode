@@ -11,6 +11,7 @@ use std::process::Command;
 
 use chrono::{DateTime, Utc};
 use monk_core::models::{Settings, Task};
+use monk_core::planner::SmallItem;
 use monk_core::protocol::{ErrorCode, Message, ReplyError};
 use pipe::Pipe;
 use serde_json::Value;
@@ -34,6 +35,11 @@ async fn update_settings(pipe: State<'_, Pipe>, settings: Settings) -> CommandRe
 #[tauri::command]
 async fn start_lock(pipe: State<'_, Pipe>, ends_at: DateTime<Utc>) -> CommandResult {
     pipe.call(Message::StartLock { ends_at }).await
+}
+
+#[tauri::command]
+async fn update_small_items(pipe: State<'_, Pipe>, items: Vec<SmallItem>) -> CommandResult {
+    pipe.call(Message::UpdateSmallItems(items)).await
 }
 
 #[tauri::command]
@@ -131,6 +137,7 @@ fn main() {
             update_settings,
             start_lock,
             update_tasks,
+            update_small_items,
             start_pomodoro,
             stop_pomodoro,
             pause_pomodoro,

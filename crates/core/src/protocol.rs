@@ -6,6 +6,7 @@ use ts_rs::TS;
 
 use crate::engine::{ActiveTab, BlockedSet};
 use crate::models::{Settings, State, Task};
+use crate::planner::SmallItem;
 
 pub const PIPE_NAME: &str = r"\\.\pipe\monkmode";
 
@@ -19,6 +20,7 @@ pub enum Message {
         ends_at: DateTime<Utc>,
     },
     UpdateTasks(Vec<Task>),
+    UpdateSmallItems(Vec<SmallItem>),
     StartPomodoro {
         task_id: Option<u32>,
     },

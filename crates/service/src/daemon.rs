@@ -15,7 +15,7 @@ use monk_core::lock::{
 use monk_core::models::{FocusSession, Lock, Now, Settings, State, UsageDay};
 use monk_core::protocol::{ErrorCode, Message};
 use monk_core::stats::build_stats;
-use monk_core::tasks::{apply_tasks, prune_tasks};
+use monk_core::tasks::{apply_small_items, apply_tasks};
 use monk_platform::registry::LockRegistryError;
 use serde_json::{json, Value};
 use tracing::{error, warn};
@@ -142,12 +142,27 @@ impl<P: Platform> Daemon<P> {
             defaults
         });
         state.lock = reconcile_lock(&db, &mut platform, last_seen);
-        state.tasks = db.load_tasks().unwrap_or_else(|e| {
+        // Tasks are stored by day, so a 06:00 missed while the service was off needs no work
+        // for them. Small work still has to move to today.
+        let today = now.app_day;
+        if let Err(e) = db.import_old_tasks(today) {
+            error!("Couldn't move old tasks: {e}");
+        }
+        if let Err(e) = db.carry_small_items(today) {
+            error!("Couldn't carry small work: {e}");
+        }
+        state.tasks = db.load_tasks(today).unwrap_or_else(|e| {
             error!("Couldn't read tasks: {e}");
             Vec::new()
         });
-        // The service may have been off at 6 AM.
-        prune_tasks(&mut state.tasks, now.app_day);
+        state.small_items = db.load_small_items(today).unwrap_or_else(|e| {
+            error!("Couldn't read small work: {e}");
+            Vec::new()
+        });
+        state.next_id = db.max_item_id().unwrap_or_else(|e| {
+            error!("Couldn't read the last id: {e}");
+            0
+        }) + 1;
 
         let mut history = db.load_days(HISTORY_DAYS).unwrap_or_else(|e| {
             error!("Couldn't read usage history: {e}");
@@ -289,7 +304,7 @@ impl<P: Platform> Daemon<P> {
                 Event::DayRolled(day) => {
                     self.log_db(self.db.save_day(day));
                     self.save_today();
-                    self.log_db(self.db.save_tasks(&self.state.tasks));
+                    self.log_db(self.db.carry_small_items(self.state.today.date));
                 }
                 Event::FocusEnded(session) => self.save_session(session),
                 _ => {}
@@ -396,10 +411,17 @@ impl<P: Platform> Daemon<P> {
                 self.state.lock = Some(lock);
                 Ok(self.state_json())
             }
+            (Client::Ui, Message::UpdateSmallItems(items)) => {
+                apply_small_items(&mut self.state, items, now.app_day).map_err(invalid)?;
+                self.db
+                    .save_small_items(now.app_day, &self.state.small_items)
+                    .map_err(|e| invalid(format!("Couldn't save small work: {e}")))?;
+                Ok(self.state_json())
+            }
             (Client::Ui, Message::UpdateTasks(tasks)) => {
                 apply_tasks(&mut self.state, tasks, now.app_day).map_err(invalid)?;
                 self.db
-                    .save_tasks(&self.state.tasks)
+                    .save_tasks(now.app_day, &self.state.tasks)
                     .map_err(|e| invalid(format!("Couldn't save tasks: {e}")))?;
                 self.save_today();
                 Ok(self.state_json())
@@ -607,17 +629,19 @@ pub mod tests {
         }
 
         fn task(&mut self, title: &str) -> Option<u32> {
-            let task = Task {
-                id: 1,
+            let id = self.daemon.state().next_id;
+            let mut tasks = self.daemon.state().tasks.clone();
+            tasks.push(Task {
+                id,
                 title: title.to_string(),
                 priority: Priority::High,
                 done: false,
                 done_on: None,
                 allocated_min: 0,
                 subtasks: vec![],
-            };
-            self.ui(Message::UpdateTasks(vec![task])).unwrap();
-            Some(1)
+            });
+            self.ui(Message::UpdateTasks(tasks)).unwrap();
+            Some(id)
         }
 
         fn lock_for_90_days(&mut self) {
@@ -891,9 +915,10 @@ pub mod tests {
     }
 
     #[test]
-    fn a_finished_task_is_gone_after_six_am_even_if_the_service_was_off() {
+    fn six_am_clears_the_list_even_if_the_service_was_off() {
         let mut rig = Rig::new();
         rig.task("Ship");
+        rig.task("Open");
         let mut tasks = rig.daemon.state().tasks.clone();
         tasks[0].done = true;
         rig.ui(Message::UpdateTasks(tasks)).unwrap();
@@ -903,6 +928,49 @@ pub mod tests {
         // Yesterday's XP stays.
         rig.run(1);
         assert_eq!(rig.daemon.state().progress.xp, 50);
+        // New tasks don't reuse yesterday's ids.
+        assert!(rig.daemon.state().next_id > 2);
+    }
+
+    #[test]
+    fn small_work_carries_over_at_six_am_while_running() {
+        let mut rig = Rig::new();
+        let item = |id, done| monk_core::planner::SmallItem {
+            id,
+            date: t0().date_naive(),
+            title: format!("Email {id}"),
+            done,
+            carried_from_date: None,
+        };
+        rig.ui(Message::UpdateSmallItems(vec![
+            item(1, false),
+            item(2, true),
+        ]))
+        .unwrap();
+        rig.utc = Utc.with_ymd_and_hms(2026, 11, 6, 5, 59, 59).unwrap();
+        rig.run(1);
+        assert_eq!(rig.daemon.state().small_items.len(), 1);
+        rig.restart();
+        assert_eq!(rig.daemon.state().small_items[0].id, 1);
+        assert_eq!(
+            rig.daemon.state().small_items[0].carried_from_date,
+            Some(t0().date_naive())
+        );
+    }
+
+    #[test]
+    fn the_service_refuses_a_fifth_task() {
+        let mut rig = Rig::new();
+        for title in ["A", "B", "C", "D"] {
+            rig.task(title);
+        }
+        let mut tasks = rig.daemon.state().tasks.clone();
+        let mut fifth = tasks[0].clone();
+        fifth.id = 99;
+        tasks.push(fifth);
+        let error = rig.ui(Message::UpdateTasks(tasks)).unwrap_err();
+        assert_eq!(error.0, ErrorCode::InvalidRequest);
+        assert_eq!(rig.daemon.state().tasks.len(), 4);
     }
 
     #[test]

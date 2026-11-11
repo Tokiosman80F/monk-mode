@@ -7,7 +7,7 @@ use crate::lock::lock_day;
 use crate::models::{AllowanceSite, FocusKind, FocusSession, Now, PomodoroState, State, UsageDay};
 use crate::progress::progress;
 use crate::stats::streak;
-use crate::tasks::prune_tasks;
+use crate::tasks::start_day;
 
 const WARN_2MIN_SEC: u32 = 120;
 const WARN_30S_SEC: u32 = 30;
@@ -97,7 +97,7 @@ fn roll_over(state: &mut State, now: Now, events: &mut Vec<Event>) {
     if now.app_day > state.today.date {
         let finished = std::mem::replace(&mut state.today, UsageDay::new(now.app_day));
         state.history.push(finished.clone());
-        prune_tasks(&mut state.tasks, now.app_day);
+        start_day(state, now.app_day);
         events.push(Event::DayRolled(finished));
     }
 }
@@ -612,15 +612,15 @@ mod tests {
     }
 
     #[test]
-    fn a_new_day_clears_finished_tasks_only() {
+    fn six_am_clears_the_task_list() {
         let mut s = state();
         with_task(&mut s, "Open");
         with_task(&mut s, "Finished");
         s.tasks[1].done = true;
-        s.tasks[1].done_on = Some(now().app_day);
+        tick(&mut s, 1, at(2026, 11, 6, 5), None);
+        assert_eq!(s.tasks.len(), 2);
         tick(&mut s, 1, at(2026, 11, 6, 6), None);
-        assert_eq!(s.tasks.len(), 1);
-        assert_eq!(s.tasks[0].title, "Open");
+        assert!(s.tasks.is_empty());
     }
 
     // Per-site limits

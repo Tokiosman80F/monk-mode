@@ -3,7 +3,8 @@
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, NaiveDate, Utc};
-use monk_core::models::{FocusKind, FocusSession, Lock, Settings, Task, UsageDay};
+use monk_core::models::{FocusKind, FocusSession, Lock, Priority, Settings, Task, UsageDay};
+use monk_core::planner::{SmallItem, MAX_TASKS_PER_DAY};
 use rusqlite::{params, Connection, OptionalExtension};
 use thiserror::Error;
 
@@ -30,6 +31,18 @@ pub fn data_dir() -> PathBuf {
     std::env::var_os("MONK_DATA_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(r"C:\ProgramData\MonkMode"))
+}
+
+fn parse_date(text: &str) -> Result<NaiveDate> {
+    text.parse().map_err(|_| DbError::BadDate(text.to_string()))
+}
+
+fn priority_text(priority: Priority) -> &'static str {
+    match priority {
+        Priority::High => "high",
+        Priority::Medium => "medium",
+        Priority::Low => "low",
+    }
 }
 
 fn parse_time(text: &str) -> Result<DateTime<Utc>> {
@@ -182,25 +195,188 @@ impl Db {
         Ok(())
     }
 
-    pub fn load_tasks(&self) -> Result<Vec<Task>> {
+    /// The tasks of one day. Other days stay in the table as the archive.
+    pub fn load_tasks(&self, date: NaiveDate) -> Result<Vec<Task>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, title, priority, status, done_at, estimate_min, subtasks
+             FROM task WHERE date = ?1 AND status != 'dropped' ORDER BY id",
+        )?;
+        let rows = stmt.query_map([date.to_string()], |r| {
+            Ok((
+                r.get::<_, u32>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, Option<String>>(4)?,
+                r.get::<_, u32>(5)?,
+                r.get::<_, String>(6)?,
+            ))
+        })?;
+        let mut tasks = Vec::new();
+        for row in rows {
+            let (id, title, priority, status, done_at, estimate_min, subtasks) = row?;
+            tasks.push(Task {
+                id,
+                title,
+                priority: serde_json::from_value(priority.into())?,
+                done: status == "done",
+                done_on: done_at.as_deref().map(parse_date).transpose()?,
+                allocated_min: estimate_min,
+                subtasks: serde_json::from_str(&subtasks)?,
+            });
+        }
+        Ok(tasks)
+    }
+
+    /// Replaces one day's tasks, leaving every other day alone.
+    pub fn save_tasks(&self, date: NaiveDate, tasks: &[Task]) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        let day = date.to_string();
+        let ids: Vec<u32> = tasks.iter().map(|t| t.id).collect();
+        // Removals first, so the 4-a-day trigger counts the list being saved.
+        tx.execute(
+            "DELETE FROM task WHERE date = ?1 AND id NOT IN (SELECT value FROM json_each(?2))",
+            params![day, serde_json::to_string(&ids)?],
+        )?;
+        for task in tasks {
+            let fields = params![
+                task.id,
+                day,
+                task.title,
+                priority_text(task.priority),
+                if task.done { "done" } else { "open" },
+                task.done_on.map(|d| d.to_string()),
+                task.allocated_min,
+                serde_json::to_string(&task.subtasks)?
+            ];
+            // An update, not an upsert: the insert trigger would count the row being replaced.
+            let updated = tx.execute(
+                "UPDATE task SET title = ?3, priority = ?4, status = ?5, done_at = ?6,
+                     estimate_min = ?7, subtasks = ?8
+                 WHERE id = ?1 AND date = ?2",
+                fields,
+            )?;
+            if updated == 0 {
+                tx.execute(
+                    "INSERT INTO task (id, date, title, priority, status, done_at, estimate_min,
+                         subtasks)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    fields,
+                )?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Moves the one-list tasks of older versions into the table: finished ones to the day they
+    /// were finished, the rest to today. More than a day's limit go to yesterday, so the morning
+    /// prompt can offer them.
+    pub fn import_old_tasks(&self, today: NaiveDate) -> Result<()> {
         let json: Option<String> = self
             .conn
             .query_row("SELECT value FROM meta WHERE key = 'tasks'", [], |r| {
                 r.get(0)
             })
             .optional()?;
-        Ok(json
-            .map(|j| serde_json::from_str(&j))
-            .transpose()?
-            .unwrap_or_default())
+        let Some(json) = json else { return Ok(()) };
+        let tasks: Vec<Task> = serde_json::from_str(&json)?;
+        let mut days: std::collections::BTreeMap<NaiveDate, Vec<Task>> = Default::default();
+        for task in tasks {
+            let date = match task.done_on {
+                Some(day) if task.done && day < today => day,
+                _ => today,
+            };
+            days.entry(date).or_default().push(task);
+        }
+        if let Some(todays) = days.get_mut(&today) {
+            if todays.len() > MAX_TASKS_PER_DAY {
+                let extra = todays.split_off(MAX_TASKS_PER_DAY);
+                let yesterday = today.pred_opt().unwrap_or(today);
+                days.entry(yesterday).or_default().extend(extra);
+            }
+        }
+        for (date, tasks) in &days {
+            // A day can't take more than its limit, so extras past it are left out.
+            let fits = &tasks[..tasks.len().min(MAX_TASKS_PER_DAY)];
+            self.save_tasks(*date, fits)?;
+        }
+        self.conn
+            .execute("DELETE FROM meta WHERE key = 'tasks'", [])?;
+        Ok(())
     }
 
-    pub fn save_tasks(&self, tasks: &[Task]) -> Result<()> {
+    pub fn load_small_items(&self, date: NaiveDate) -> Result<Vec<SmallItem>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, title, done, carried_from_date FROM small_item WHERE date = ?1 ORDER BY id",
+        )?;
+        let rows = stmt.query_map([date.to_string()], |r| {
+            Ok((
+                r.get::<_, u32>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, bool>(2)?,
+                r.get::<_, Option<String>>(3)?,
+            ))
+        })?;
+        let mut items = Vec::new();
+        for row in rows {
+            let (id, title, done, carried) = row?;
+            items.push(SmallItem {
+                id,
+                date,
+                title,
+                done,
+                carried_from_date: carried.as_deref().map(parse_date).transpose()?,
+            });
+        }
+        Ok(items)
+    }
+
+    pub fn save_small_items(&self, date: NaiveDate, items: &[SmallItem]) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        let ids: Vec<u32> = items.iter().map(|i| i.id).collect();
+        tx.execute(
+            "DELETE FROM small_item WHERE date = ?1 AND id NOT IN (SELECT value FROM json_each(?2))",
+            params![date.to_string(), serde_json::to_string(&ids)?],
+        )?;
+        for item in items {
+            tx.execute(
+                "INSERT INTO small_item (id, date, title, done, carried_from_date)
+                 VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT (id) DO UPDATE SET date = excluded.date, title = excluded.title,
+                     done = excluded.done, carried_from_date = excluded.carried_from_date",
+                params![
+                    item.id,
+                    date.to_string(),
+                    item.title,
+                    item.done,
+                    item.carried_from_date.map(|d| d.to_string())
+                ],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Moves unticked small work from earlier days to `today`. Safe to run more than once, and
+    /// catches up if the service was off at 06:00.
+    pub fn carry_small_items(&self, today: NaiveDate) -> Result<()> {
         self.conn.execute(
-            "INSERT OR REPLACE INTO meta (key, value) VALUES ('tasks', ?1)",
-            [serde_json::to_string(tasks)?],
+            "UPDATE small_item SET carried_from_date = COALESCE(carried_from_date, date), date = ?1
+             WHERE done = 0 AND date < ?1",
+            [today.to_string()],
         )?;
         Ok(())
+    }
+
+    /// The highest id any task or small item has used.
+    pub fn max_item_id(&self) -> Result<u32> {
+        Ok(self.conn.query_row(
+            "SELECT MAX(COALESCE((SELECT MAX(id) FROM task), 0),
+                        COALESCE((SELECT MAX(id) FROM small_item), 0))",
+            [],
+            |r| r.get(0),
+        )?)
     }
 
     pub fn load_last_seen(&self) -> Result<Option<DateTime<Utc>>> {
@@ -314,6 +490,97 @@ mod tests {
         }
         // Marking how the day went is still allowed.
         run(&db, "UPDATE goal_day SET status = 'done'").unwrap();
+    }
+
+    fn stored_task(id: u32, done_on: Option<NaiveDate>) -> Task {
+        Task {
+            id,
+            title: format!("Task {id}"),
+            priority: Priority::High,
+            done: done_on.is_some(),
+            done_on,
+            allocated_min: 60,
+            subtasks: vec![],
+        }
+    }
+
+    #[test]
+    fn tasks_are_kept_per_day_and_old_days_stay_archived() {
+        let (_dir, db) = temp_db();
+        let monday = vec![stored_task(1, Some(date(9))), stored_task(2, None)];
+        db.save_tasks(date(9), &monday).unwrap();
+        db.save_tasks(date(10), &[stored_task(3, None)]).unwrap();
+        assert_eq!(db.load_tasks(date(9)).unwrap(), monday);
+        assert_eq!(db.load_tasks(date(10)).unwrap().len(), 1);
+        assert_eq!(db.max_item_id().unwrap(), 3);
+        // Saving a day's list changes only that day.
+        db.save_tasks(date(10), &[]).unwrap();
+        assert_eq!(db.load_tasks(date(9)).unwrap(), monday);
+    }
+
+    #[test]
+    fn a_full_day_can_still_be_edited() {
+        let (_dir, db) = temp_db();
+        let mut four: Vec<_> = (1..=4).map(|id| stored_task(id, None)).collect();
+        db.save_tasks(date(9), &four).unwrap();
+        four[0].done = true;
+        four[3].title = "Renamed".to_string();
+        db.save_tasks(date(9), &four).unwrap();
+        assert_eq!(db.load_tasks(date(9)).unwrap(), four);
+        // Swapping one task for another works too.
+        four[1] = stored_task(5, None);
+        db.save_tasks(date(9), &four).unwrap();
+        four.sort_by_key(|t| t.id);
+        assert_eq!(db.load_tasks(date(9)).unwrap(), four);
+        four.push(stored_task(6, None));
+        assert!(db.save_tasks(date(9), &four).is_err());
+    }
+
+    #[test]
+    fn old_single_list_tasks_move_into_the_table() {
+        let (_dir, db) = temp_db();
+        let old = vec![
+            stored_task(1, None),
+            stored_task(2, Some(date(8))),
+            stored_task(3, Some(date(9))),
+        ];
+        db.conn
+            .execute(
+                "INSERT INTO meta (key, value) VALUES ('tasks', ?1)",
+                [serde_json::to_string(&old).unwrap()],
+            )
+            .unwrap();
+        db.import_old_tasks(date(9)).unwrap();
+        assert_eq!(db.load_tasks(date(8)).unwrap(), [old[1].clone()]);
+        assert_eq!(
+            db.load_tasks(date(9)).unwrap(),
+            [old[0].clone(), old[2].clone()]
+        );
+        // Running it again does nothing.
+        db.import_old_tasks(date(9)).unwrap();
+        assert_eq!(db.load_tasks(date(9)).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn unticked_small_work_carries_to_today_once() {
+        let (_dir, db) = temp_db();
+        let item = |id, done| SmallItem {
+            id,
+            date: date(9),
+            title: format!("Call {id}"),
+            done,
+            carried_from_date: None,
+        };
+        db.save_small_items(date(9), &[item(1, false), item(2, true)])
+            .unwrap();
+        db.carry_small_items(date(11)).unwrap();
+        db.carry_small_items(date(11)).unwrap();
+        let today = db.load_small_items(date(11)).unwrap();
+        assert_eq!(today.len(), 1);
+        assert_eq!(today[0].id, 1);
+        assert_eq!(today[0].carried_from_date, Some(date(9)));
+        // The ticked one stays on its own day.
+        assert_eq!(db.load_small_items(date(9)).unwrap()[0].id, 2);
     }
 
     #[test]
@@ -437,7 +704,7 @@ mod tests {
     #[test]
     fn tasks_round_trip() {
         let (_dir, db) = temp_db();
-        assert!(db.load_tasks().unwrap().is_empty());
+        assert!(db.load_tasks(date(5)).unwrap().is_empty());
         let task = Task {
             id: 1,
             title: "Ship".to_string(),
@@ -447,8 +714,8 @@ mod tests {
             allocated_min: 180,
             subtasks: vec![],
         };
-        db.save_tasks(std::slice::from_ref(&task)).unwrap();
-        assert_eq!(db.load_tasks().unwrap(), [task]);
+        db.save_tasks(date(5), std::slice::from_ref(&task)).unwrap();
+        assert_eq!(db.load_tasks(date(5)).unwrap(), [task]);
     }
 
     #[test]

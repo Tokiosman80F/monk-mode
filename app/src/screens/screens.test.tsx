@@ -20,6 +20,7 @@ import Pomodoro from "./Pomodoro";
 import Rewards from "./Rewards";
 import Setup from "./Setup";
 import StatsScreen from "./Stats";
+import SmallWork from "./SmallWork";
 import Tasks from "./Tasks";
 import Today from "./Today";
 
@@ -32,6 +33,7 @@ vi.mock("../api", () => ({
     startLock: vi.fn(),
     startPomodoro: vi.fn(),
     stopPomodoro: vi.fn(),
+    updateSmallItems: vi.fn(),
     pausePomodoro: vi.fn(),
     getStats: vi.fn(),
     installService: vi.fn(),
@@ -49,6 +51,7 @@ beforeEach(() => {
   vi.mocked(api.updateTasks).mockResolvedValue(makeSnapshot());
   vi.mocked(api.startPomodoro).mockResolvedValue(makeSnapshot());
   vi.mocked(api.stopPomodoro).mockResolvedValue(makeSnapshot());
+  vi.mocked(api.updateSmallItems).mockResolvedValue(makeSnapshot());
   vi.mocked(api.pausePomodoro).mockResolvedValue(makeSnapshot());
   vi.mocked(api.startLock).mockResolvedValue(makeSnapshot());
 });
@@ -142,7 +145,7 @@ describe("Tasks", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
     await waitFor(() =>
       expect(savedTasks()[2]).toMatchObject({
-        id: 3,
+        id: 4,
         title: "Read docs",
         allocated_min: 180,
         priority: "high",
@@ -162,7 +165,7 @@ describe("Tasks", () => {
     const snapshot = setStore();
     const next = structuredClone(snapshot);
     next.state.tasks.push({
-      id: 3,
+      id: 4,
       title: "Read",
       priority: "medium",
       done: false,
@@ -511,6 +514,63 @@ describe("Pomodoro", () => {
     render(<Pomodoro />);
     fireEvent.click(screen.getByRole("button", { name: /Start focus/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Nope.");
+  });
+});
+
+describe("Task limit", () => {
+  it("stops offering new tasks at 4", () => {
+    setStore(({ state }) => {
+      state.tasks = [1, 2, 3, 4].map((id) => ({
+        id,
+        title: `Task ${id}`,
+        priority: "low" as const,
+        done: false,
+        done_on: null,
+        allocated_min: 60,
+        subtasks: [],
+      }));
+    });
+    render(<Tasks />);
+    expect(screen.queryByLabelText("New task")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("4 tasks");
+  });
+
+  it("gives a new task an id the archive hasn't used", async () => {
+    setStore(({ state }) => {
+      state.next_id = 50;
+    });
+    render(<Tasks />);
+    fireEvent.change(screen.getByLabelText("New task"), {
+      target: { value: "Write" },
+    });
+    fireEvent.change(screen.getByLabelText("Total time"), {
+      target: { value: "1h" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(api.updateTasks).toHaveBeenCalled());
+    expect(savedTasks().at(-1)?.id).toBe(50);
+  });
+});
+
+describe("Small work", () => {
+  it("adds, ticks and removes items, and shows where one came from", async () => {
+    setStore();
+    render(<SmallWork />);
+    expect(screen.getByText(/^from /)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("New small work"), {
+      target: { value: "Email Sara" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(api.updateSmallItems).toHaveBeenCalled());
+    const added = vi.mocked(api.updateSmallItems).mock.calls[0][0];
+    expect(added.map((i) => i.title)).toEqual(["Call the bank", "Email Sara"]);
+    expect(added[1].id).toBe(4);
+
+    vi.mocked(api.updateSmallItems).mockClear();
+    fireEvent.click(screen.getByLabelText("Finish Call the bank"));
+    await waitFor(() => expect(api.updateSmallItems).toHaveBeenCalled());
+    expect(vi.mocked(api.updateSmallItems).mock.calls[0][0][0].done).toBe(true);
   });
 });
 

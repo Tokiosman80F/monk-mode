@@ -4,7 +4,20 @@ import type { LockDay } from "./LockDay";
 import type { PomodoroState } from "./PomodoroState";
 import type { Progress } from "./Progress";
 import type { Settings } from "./Settings";
+import type { SmallItem } from "./SmallItem";
 import type { Task } from "./Task";
 import type { UsageDay } from "./UsageDay";
 
-export type State = { settings: Settings, lock: Lock | null, today: UsageDay, pomodoro: PomodoroState, streak_days: number, lock_day: LockDay | null, tasks: Array<Task>, progress: Progress, };
+export type State = { settings: Settings, lock: Lock | null, today: UsageDay, pomodoro: PomodoroState, streak_days: number, lock_day: LockDay | null, 
+/**
+ * Today's tasks. Earlier days stay in the database.
+ */
+tasks: Array<Task>, 
+/**
+ * Today's small work, including unticked items carried over.
+ */
+small_items: Array<SmallItem>, 
+/**
+ * The lowest id no task or small item has ever used, so new ones never clash with the archive.
+ */
+next_id: number, progress: Progress, };

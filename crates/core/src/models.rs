@@ -4,6 +4,8 @@ use chrono::{DateTime, Duration, NaiveDate, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::planner::SmallItem;
+
 fn strings(items: &[&str]) -> Vec<String> {
     items.iter().map(|s| s.to_string()).collect()
 }
@@ -247,7 +249,12 @@ pub struct State {
     pub pomodoro: PomodoroState,
     pub streak_days: u32,
     pub lock_day: Option<LockDay>,
+    /// Today's tasks. Earlier days stay in the database.
     pub tasks: Vec<Task>,
+    /// Today's small work, including unticked items carried over.
+    pub small_items: Vec<SmallItem>,
+    /// The lowest id no task or small item has ever used, so new ones never clash with the archive.
+    pub next_id: u32,
     pub progress: Progress,
     /// Past days, oldest first. Kept off the wire: `state_changed` goes out every second.
     #[serde(skip)]
@@ -265,6 +272,8 @@ impl State {
             streak_days: 0,
             lock_day: None,
             tasks: Vec::new(),
+            small_items: Vec::new(),
+            next_id: 1,
             progress: Progress::default(),
             history: Vec::new(),
         }

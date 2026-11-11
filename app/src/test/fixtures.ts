@@ -53,6 +53,16 @@ export function makeSnapshot(): Snapshot {
           ],
         },
       ],
+      small_items: [
+        {
+          id: 3,
+          date: "2026-11-05",
+          title: "Call the bank",
+          done: false,
+          carried_from_date: "2026-11-04",
+        },
+      ],
+      next_id: 4,
       progress: {
         xp: 320,
         today_xp: 100,
