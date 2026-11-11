@@ -319,6 +319,8 @@ mod tests {
             done_on: None,
             allocated_min: 0,
             subtasks: vec![],
+            focus_area: None,
+            carried_from_date: None,
         };
         let mut s = state(0);
         assert_eq!(next_task(&s, None), None);
@@ -342,6 +344,8 @@ mod tests {
             done_on: None,
             allocated_min: 0,
             subtasks: vec![],
+            focus_area: None,
+            carried_from_date: None,
         };
         let mut s = state(0);
         s.tasks = vec![

@@ -22,6 +22,8 @@ import FocusSettings from "./screens/FocusSettings";
 import Limits from "./screens/Limits";
 import LockScreen from "./screens/Lock";
 import Mini from "./screens/Mini";
+import MorningPrompt from "./screens/MorningPrompt";
+import PlannerSetup from "./screens/PlannerSetup";
 import { isMiniWindow } from "./windows";
 import Rewards from "./screens/Rewards";
 import Setup from "./screens/Setup";
@@ -115,11 +117,16 @@ function Layout() {
 export default function App() {
   useServiceState();
   const setupDone = useStore((s) => s.snapshot?.state.settings.setup_done);
+  const profile = useStore((s) => s.snapshot?.state.settings.profile);
+  const planned = useStore((s) => s.snapshot?.state.planned);
 
   // The small timer window loads the same page.
   if (isMiniWindow()) return <Mini />;
   // Only a service that has answered can say setup isn't done.
   if (setupDone === false) return <Setup />;
+  // Then the planner: a one-time profile, and a plan before anything else each day.
+  if (profile === null) return <PlannerSetup />;
+  if (planned === false) return <MorningPrompt />;
 
   return (
     <HashRouter>

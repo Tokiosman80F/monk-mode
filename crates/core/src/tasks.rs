@@ -6,7 +6,7 @@ use chrono::NaiveDate;
 use thiserror::Error;
 
 use crate::models::{PomodoroState, Priority, State, Task};
-use crate::planner::{SmallItem, MAX_TASKS_PER_DAY};
+use crate::planner::{LeftoverAction, SmallItem, MAX_TASKS_PER_DAY};
 use crate::progress::progress;
 
 const MAX_TITLE_CHARS: usize = 200;
@@ -25,6 +25,14 @@ pub enum TaskError {
     TooMuchTime,
     #[error("A day can have at most {MAX_TASKS_PER_DAY} tasks. Put quick jobs in small work.")]
     TooManyTasks,
+    #[error("A focus area name must be {MAX_TITLE_CHARS} characters or less.")]
+    BadFocusArea,
+    #[error("Write at least one task to start your day. Small work doesn't count.")]
+    NoTasks,
+    #[error("That task isn't one of yesterday's.")]
+    UnknownLeftover,
+    #[error("Pick a day after today.")]
+    NotLater,
 }
 
 pub fn priority_xp(priority: Priority) -> u32 {
@@ -63,6 +71,13 @@ fn validate(tasks: &[Task]) -> Result<(), TaskError> {
     let mut ids = HashSet::new();
     for task in tasks {
         check_title(&task.title)?;
+        if task
+            .focus_area
+            .as_ref()
+            .is_some_and(|a| a.chars().count() > MAX_TITLE_CHARS)
+        {
+            return Err(TaskError::BadFocusArea);
+        }
         if task.allocated_min > MINUTES_PER_DAY {
             return Err(TaskError::TooMuchTime);
         }
@@ -99,6 +114,8 @@ pub fn apply_tasks(
             renames.push((old.title.clone(), task.title.clone()));
         }
         let was_done = old.is_some_and(|t| t.done);
+        // Only the service moves tasks between days.
+        task.carried_from_date = old.and_then(|t| t.carried_from_date);
         task.done_on = match (task.done, was_done) {
             (false, _) => None,
             (true, true) => old.and_then(|t| t.done_on).or(Some(today)),
@@ -161,9 +178,51 @@ pub fn apply_small_items(
     Ok(())
 }
 
+/// Carries, moves or drops one of yesterday's unfinished tasks. Returns the task so the caller
+/// can store the change.
+pub fn resolve_leftover(
+    state: &mut State,
+    task_id: u32,
+    action: LeftoverAction,
+    today: NaiveDate,
+) -> Result<Task, TaskError> {
+    let index = state
+        .leftovers
+        .iter()
+        .position(|t| t.id == task_id)
+        .ok_or(TaskError::UnknownLeftover)?;
+    match action {
+        LeftoverAction::Carry if state.tasks.len() >= MAX_TASKS_PER_DAY => {
+            return Err(TaskError::TooManyTasks)
+        }
+        LeftoverAction::Move { date } if date <= today => return Err(TaskError::NotLater),
+        _ => {}
+    }
+    let mut task = state.leftovers.remove(index);
+    task.carried_from_date
+        .get_or_insert(today.pred_opt().unwrap_or(today));
+    if action == LeftoverAction::Carry {
+        state.tasks.push(task.clone());
+    }
+    Ok(task)
+}
+
+/// Confirms today's plan, which needs at least one task.
+pub fn plan_day(state: &mut State) -> Result<(), TaskError> {
+    if state.tasks.is_empty() {
+        return Err(TaskError::NoTasks);
+    }
+    state.planned = true;
+    Ok(())
+}
+
 /// The 06:00 reset. Tasks stay in the database under their own day, and only today's are shown,
-/// so the list starts empty. Unticked small work moves to the new day.
+/// so the list starts empty. Unticked small work moves to the new day, and unfinished tasks wait
+/// in the morning prompt.
 pub fn start_day(state: &mut State, today: NaiveDate) {
+    state.leftovers = state.tasks.iter().filter(|t| !t.done).cloned().collect();
+    state.planned = false;
+    state.today_target = None;
     state.tasks.clear();
     state.small_items.retain(|item| !item.done);
     for item in &mut state.small_items {
@@ -203,6 +262,8 @@ mod tests {
             done_on: None,
             allocated_min: 0,
             subtasks: vec![],
+            focus_area: None,
+            carried_from_date: None,
         }
     }
 
@@ -371,6 +432,67 @@ mod tests {
         apply_tasks(&mut s, vec![task(1, Priority::High, true)], day).unwrap();
         assert_eq!(s.tasks[0].done_on, Some(date(12)));
         assert_eq!(s.today.tasks_done, 1);
+    }
+
+    #[test]
+    fn a_new_day_offers_unfinished_tasks_and_needs_a_new_plan() {
+        let mut s = State::new(date(5));
+        apply(
+            &mut s,
+            vec![task(1, Priority::High, false), task(2, Priority::Low, true)],
+        )
+        .unwrap();
+        plan_day(&mut s).unwrap();
+        start_day(&mut s, date(6));
+        assert!(!s.planned);
+        assert_eq!(s.leftovers.len(), 1);
+        assert_eq!(s.leftovers[0].id, 1);
+        // Only small work isn't a plan.
+        assert_eq!(plan_day(&mut s), Err(TaskError::NoTasks));
+        assert!(!s.planned);
+    }
+
+    #[test]
+    fn leftovers_can_be_carried_moved_or_dropped() {
+        let mut s = State::new(date(6));
+        s.leftovers = (1..=3).map(|id| task(id, Priority::Low, false)).collect();
+        let carried = resolve_leftover(&mut s, 1, LeftoverAction::Carry, date(6)).unwrap();
+        assert_eq!(carried.carried_from_date, Some(date(5)));
+        assert_eq!(s.tasks[0].id, 1);
+        assert_eq!(
+            resolve_leftover(&mut s, 2, LeftoverAction::Move { date: date(6) }, date(6)),
+            Err(TaskError::NotLater)
+        );
+        let moved = LeftoverAction::Move { date: date(9) };
+        resolve_leftover(&mut s, 2, moved, date(6)).unwrap();
+        resolve_leftover(&mut s, 3, LeftoverAction::Drop, date(6)).unwrap();
+        assert!(s.leftovers.is_empty());
+        assert_eq!(s.tasks.len(), 1);
+        assert_eq!(
+            resolve_leftover(&mut s, 3, LeftoverAction::Drop, date(6)),
+            Err(TaskError::UnknownLeftover)
+        );
+        // A carried task keeps its date even if the client says otherwise.
+        let mut faked = s.tasks.clone();
+        faked[0].carried_from_date = None;
+        apply(&mut s, faked).unwrap();
+        assert_eq!(s.tasks[0].carried_from_date, Some(date(5)));
+    }
+
+    #[test]
+    fn carrying_onto_a_full_day_is_refused() {
+        let mut s = State::new(date(6));
+        apply(
+            &mut s,
+            (1..=4).map(|id| task(id, Priority::Low, false)).collect(),
+        )
+        .unwrap();
+        s.leftovers = vec![task(9, Priority::High, false)];
+        assert_eq!(
+            resolve_leftover(&mut s, 9, LeftoverAction::Carry, date(6)),
+            Err(TaskError::TooManyTasks)
+        );
+        assert_eq!(s.leftovers.len(), 1);
     }
 
     #[test]

@@ -345,6 +345,8 @@ mod tests {
             done_on: None,
             allocated_min: 0,
             subtasks: vec![],
+            focus_area: None,
+            carried_from_date: None,
         });
         Some(id)
     }

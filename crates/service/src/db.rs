@@ -197,10 +197,20 @@ impl Db {
 
     /// The tasks of one day. Other days stay in the table as the archive.
     pub fn load_tasks(&self, date: NaiveDate) -> Result<Vec<Task>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, title, priority, status, done_at, estimate_min, subtasks
-             FROM task WHERE date = ?1 AND status != 'dropped' ORDER BY id",
-        )?;
+        self.query_tasks(date, "status != 'dropped'")
+    }
+
+    /// A day's unfinished tasks, for the next morning's prompt.
+    pub fn load_open_tasks(&self, date: NaiveDate) -> Result<Vec<Task>> {
+        self.query_tasks(date, "status = 'open'")
+    }
+
+    fn query_tasks(&self, date: NaiveDate, filter: &str) -> Result<Vec<Task>> {
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT id, title, priority, status, done_at, estimate_min, subtasks, focus_area,
+                    carried_from_date
+             FROM task WHERE date = ?1 AND {filter} ORDER BY id"
+        ))?;
         let rows = stmt.query_map([date.to_string()], |r| {
             Ok((
                 r.get::<_, u32>(0)?,
@@ -210,11 +220,14 @@ impl Db {
                 r.get::<_, Option<String>>(4)?,
                 r.get::<_, u32>(5)?,
                 r.get::<_, String>(6)?,
+                r.get::<_, Option<String>>(7)?,
+                r.get::<_, Option<String>>(8)?,
             ))
         })?;
         let mut tasks = Vec::new();
         for row in rows {
-            let (id, title, priority, status, done_at, estimate_min, subtasks) = row?;
+            let (id, title, priority, status, done_at, estimate_min, subtasks, focus_area, carried) =
+                row?;
             tasks.push(Task {
                 id,
                 title,
@@ -223,9 +236,66 @@ impl Db {
                 done_on: done_at.as_deref().map(parse_date).transpose()?,
                 allocated_min: estimate_min,
                 subtasks: serde_json::from_str(&subtasks)?,
+                focus_area,
+                carried_from_date: carried.as_deref().map(parse_date).transpose()?,
             });
         }
         Ok(tasks)
+    }
+
+    /// Moves an unfinished task to another day, remembering the day it started on.
+    pub fn move_task(&self, id: u32, to: NaiveDate) -> Result<()> {
+        self.conn.execute(
+            "UPDATE task SET carried_from_date = COALESCE(carried_from_date, date), date = ?2
+             WHERE id = ?1 AND status = 'open'",
+            params![id, to.to_string()],
+        )?;
+        Ok(())
+    }
+
+    /// Keeps the task in the history, off every list.
+    pub fn drop_task(&self, id: u32) -> Result<()> {
+        self.conn
+            .execute("UPDATE task SET status = 'dropped' WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    /// Records the first time a day's plan was confirmed.
+    pub fn mark_planned(&self, date: NaiveDate, at: DateTime<Utc>) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO day_log (date, planned_at) VALUES (?1, ?2)
+             ON CONFLICT (date) DO UPDATE SET planned_at = COALESCE(planned_at, excluded.planned_at)",
+            params![date.to_string(), at.to_rfc3339()],
+        )?;
+        Ok(())
+    }
+
+    pub fn is_planned(&self, date: NaiveDate) -> Result<bool> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT planned_at IS NOT NULL FROM day_log WHERE date = ?1",
+                [date.to_string()],
+                |r| r.get(0),
+            )
+            .optional()?
+            .unwrap_or(false))
+    }
+
+    /// The day's row from a saved monthly goal: its target, or "Rest day".
+    pub fn load_target(&self, date: NaiveDate) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT CASE WHEN d.status = 'rest' THEN 'Rest day' ELSE d.target END
+                 FROM goal_day d JOIN goal g ON g.id = d.goal_id
+                 WHERE g.level = 'month' AND g.locked_at IS NOT NULL AND d.date = ?1
+                   AND (d.target != '' OR d.status = 'rest')
+                 LIMIT 1",
+                [date.to_string()],
+                |r| r.get(0),
+            )
+            .optional()?)
     }
 
     /// Replaces one day's tasks, leaving every other day alone.
@@ -247,20 +317,22 @@ impl Db {
                 if task.done { "done" } else { "open" },
                 task.done_on.map(|d| d.to_string()),
                 task.allocated_min,
-                serde_json::to_string(&task.subtasks)?
+                serde_json::to_string(&task.subtasks)?,
+                task.focus_area,
+                task.carried_from_date.map(|d| d.to_string())
             ];
             // An update, not an upsert: the insert trigger would count the row being replaced.
             let updated = tx.execute(
                 "UPDATE task SET title = ?3, priority = ?4, status = ?5, done_at = ?6,
-                     estimate_min = ?7, subtasks = ?8
+                     estimate_min = ?7, subtasks = ?8, focus_area = ?9, carried_from_date = ?10
                  WHERE id = ?1 AND date = ?2",
                 fields,
             )?;
             if updated == 0 {
                 tx.execute(
                     "INSERT INTO task (id, date, title, priority, status, done_at, estimate_min,
-                         subtasks)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                         subtasks, focus_area, carried_from_date)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                     fields,
                 )?;
             }
@@ -501,6 +573,8 @@ mod tests {
             done_on,
             allocated_min: 60,
             subtasks: vec![],
+            focus_area: None,
+            carried_from_date: None,
         }
     }
 
@@ -559,6 +633,73 @@ mod tests {
         // Running it again does nothing.
         db.import_old_tasks(date(9)).unwrap();
         assert_eq!(db.load_tasks(date(9)).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn a_task_can_move_to_a_later_day_or_be_dropped() {
+        let (_dir, db) = temp_db();
+        let mut area = stored_task(1, None);
+        area.focus_area = Some("React".to_string());
+        db.save_tasks(date(9), &[area.clone(), stored_task(2, None)])
+            .unwrap();
+        assert_eq!(
+            db.load_open_tasks(date(9)).unwrap()[0]
+                .focus_area
+                .as_deref(),
+            Some("React")
+        );
+
+        db.move_task(1, date(12)).unwrap();
+        let moved = &db.load_tasks(date(12)).unwrap()[0];
+        assert_eq!(moved.carried_from_date, Some(date(9)));
+        db.drop_task(2).unwrap();
+        assert!(db.load_tasks(date(9)).unwrap().is_empty());
+        assert!(db.load_open_tasks(date(9)).unwrap().is_empty());
+        // Dropped, not deleted.
+        let kept: u32 = db
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM task WHERE status = 'dropped'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(kept, 1);
+    }
+
+    #[test]
+    fn a_plan_is_recorded_once_and_a_saved_goal_gives_the_day_target() {
+        let (_dir, db) = temp_db();
+        assert!(!db.is_planned(date(9)).unwrap());
+        db.mark_planned(date(9), t(9)).unwrap();
+        db.mark_planned(date(9), t(10)).unwrap();
+        assert!(db.is_planned(date(9)).unwrap());
+        let at: String = db
+            .conn
+            .query_row("SELECT planned_at FROM day_log", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(parse_time(&at).unwrap(), t(9));
+
+        db.conn
+            .execute_batch(
+                "INSERT INTO goal (id, level, period_start, period_end, title)
+                 VALUES (1, 'month', '2026-11-09', '2026-11-30', 'Ship');
+                 INSERT INTO goal_day (goal_id, date, target) VALUES (1, '2026-11-09', 'Hooks');
+                 INSERT INTO goal_day (goal_id, date, target, status)
+                     VALUES (1, '2026-11-10', '', 'rest');",
+            )
+            .unwrap();
+        // A draft goal gives nothing.
+        assert_eq!(db.load_target(date(9)).unwrap(), None);
+        db.conn
+            .execute("UPDATE goal SET locked_at = '2026-11-09T00:00:00Z'", [])
+            .unwrap();
+        assert_eq!(db.load_target(date(9)).unwrap().as_deref(), Some("Hooks"));
+        assert_eq!(
+            db.load_target(date(10)).unwrap().as_deref(),
+            Some("Rest day")
+        );
+        assert_eq!(db.load_target(date(11)).unwrap(), None);
     }
 
     #[test]
@@ -713,6 +854,8 @@ mod tests {
             done_on: None,
             allocated_min: 180,
             subtasks: vec![],
+            focus_area: None,
+            carried_from_date: None,
         };
         db.save_tasks(date(5), std::slice::from_ref(&task)).unwrap();
         assert_eq!(db.load_tasks(date(5)).unwrap(), [task]);

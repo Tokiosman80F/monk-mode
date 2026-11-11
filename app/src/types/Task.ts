@@ -10,4 +10,12 @@ done_on: string | null,
 /**
  * Minutes set aside. Tasks saved before this existed have none.
  */
-allocated_min: number, subtasks: Array<Subtask>, };
+allocated_min: number, subtasks: Array<Subtask>, 
+/**
+ * One of the profile's focus areas, like `React`.
+ */
+focus_area: string | null, 
+/**
+ * Set by the service when an unfinished task moves to a later day.
+ */
+carried_from_date: string | null, };

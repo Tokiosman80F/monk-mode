@@ -32,6 +32,29 @@ async function renderApp() {
 }
 
 describe("App", () => {
+  it("asks for the planner setup, then today's plan, before anything else", async () => {
+    const snapshot = makeSnapshot();
+    snapshot.state.settings.profile = null;
+    vi.mocked(api.getState).mockResolvedValue(snapshot);
+    await renderApp();
+    expect(
+      screen.getByRole("heading", { name: "Set up your planner" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Limits" }),
+    ).not.toBeInTheDocument();
+
+    const ready = makeSnapshot();
+    ready.state.planned = false;
+    act(() => useStore.getState().setSnapshot(ready));
+    expect(
+      screen.getByRole("heading", { name: "Plan your day" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Limits" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("loads state and navigates between all screens", async () => {
     await renderApp();
     expect(

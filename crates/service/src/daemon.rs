@@ -13,9 +13,10 @@ use monk_core::lock::{
     effective_now, next_lock, validate_change, validate_settings, NextLockError,
 };
 use monk_core::models::{FocusSession, Lock, Now, Settings, State, UsageDay};
+use monk_core::planner::LeftoverAction;
 use monk_core::protocol::{ErrorCode, Message};
 use monk_core::stats::build_stats;
-use monk_core::tasks::{apply_small_items, apply_tasks};
+use monk_core::tasks::{apply_small_items, apply_tasks, plan_day, resolve_leftover};
 use monk_platform::registry::LockRegistryError;
 use serde_json::{json, Value};
 use tracing::{error, warn};
@@ -119,6 +120,24 @@ pub struct Daemon<P: Platform> {
     open_app: bool,
 }
 
+/// What the morning prompt needs for `today`: whether it's planned, yesterday's unfinished
+/// tasks, and the monthly goal's target.
+fn load_morning(db: &Db, state: &mut State, today: chrono::NaiveDate) {
+    state.planned = db.is_planned(today).unwrap_or_else(|e| {
+        error!("Couldn't read the day log: {e}");
+        false
+    });
+    let yesterday = today.pred_opt().unwrap_or(today);
+    state.leftovers = db.load_open_tasks(yesterday).unwrap_or_else(|e| {
+        error!("Couldn't read yesterday's tasks: {e}");
+        Vec::new()
+    });
+    state.today_target = db.load_target(today).unwrap_or_else(|e| {
+        error!("Couldn't read today's target: {e}");
+        None
+    });
+}
+
 impl<P: Platform> Daemon<P> {
     pub fn new(
         db: Db,
@@ -163,6 +182,7 @@ impl<P: Platform> Daemon<P> {
             error!("Couldn't read the last id: {e}");
             0
         }) + 1;
+        load_morning(&db, &mut state, today);
 
         let mut history = db.load_days(HISTORY_DAYS).unwrap_or_else(|e| {
             error!("Couldn't read usage history: {e}");
@@ -304,7 +324,9 @@ impl<P: Platform> Daemon<P> {
                 Event::DayRolled(day) => {
                     self.log_db(self.db.save_day(day));
                     self.save_today();
-                    self.log_db(self.db.carry_small_items(self.state.today.date));
+                    let today = self.state.today.date;
+                    self.log_db(self.db.carry_small_items(today));
+                    load_morning(&self.db, &mut self.state, today);
                 }
                 Event::FocusEnded(session) => self.save_session(session),
                 _ => {}
@@ -416,6 +438,27 @@ impl<P: Platform> Daemon<P> {
                 self.db
                     .save_small_items(now.app_day, &self.state.small_items)
                     .map_err(|e| invalid(format!("Couldn't save small work: {e}")))?;
+                Ok(self.state_json())
+            }
+            (Client::Ui, Message::ResolveLeftover { task_id, action }) => {
+                let today = now.app_day;
+                resolve_leftover(&mut self.state, task_id, action, today).map_err(invalid)?;
+                let stored = match action {
+                    LeftoverAction::Carry => self.db.move_task(task_id, today),
+                    LeftoverAction::Move { date } => self.db.move_task(task_id, date),
+                    LeftoverAction::Drop => self.db.drop_task(task_id),
+                };
+                if let Err(e) = stored {
+                    // Most likely the other day is full. Show what's really stored.
+                    load_morning(&self.db, &mut self.state, today);
+                    self.state.tasks = self.db.load_tasks(today).unwrap_or_default();
+                    return Err(invalid(format!("Couldn't move that task: {e}")));
+                }
+                Ok(self.state_json())
+            }
+            (Client::Ui, Message::PlanDay) => {
+                plan_day(&mut self.state).map_err(invalid)?;
+                self.log_db(self.db.mark_planned(now.app_day, now.utc));
                 Ok(self.state_json())
             }
             (Client::Ui, Message::UpdateTasks(tasks)) => {
@@ -639,6 +682,8 @@ pub mod tests {
                 done_on: None,
                 allocated_min: 0,
                 subtasks: vec![],
+                focus_area: None,
+                carried_from_date: None,
             });
             self.ui(Message::UpdateTasks(tasks)).unwrap();
             Some(id)
@@ -956,6 +1001,77 @@ pub mod tests {
             rig.daemon.state().small_items[0].carried_from_date,
             Some(t0().date_naive())
         );
+    }
+
+    #[test]
+    fn the_morning_offers_yesterdays_unfinished_tasks_and_waits_for_a_plan() {
+        let mut rig = Rig::new();
+        rig.task("Open");
+        rig.task("Finished");
+        let mut tasks = rig.daemon.state().tasks.clone();
+        tasks[1].done = true;
+        rig.ui(Message::UpdateTasks(tasks)).unwrap();
+        assert!(rig.ui(Message::PlanDay).is_ok());
+
+        // The service is off at 06:00 and starts later that morning.
+        rig.utc = Utc.with_ymd_and_hms(2026, 11, 6, 9, 0, 0).unwrap();
+        rig.restart();
+        let state = rig.daemon.state();
+        assert!(!state.planned);
+        assert_eq!(state.leftovers.len(), 1);
+        let id = state.leftovers[0].id;
+        assert_eq!(
+            rig.ui(Message::PlanDay).unwrap_err().0,
+            ErrorCode::InvalidRequest
+        );
+
+        let carry = LeftoverAction::Carry;
+        rig.ui(Message::ResolveLeftover {
+            task_id: id,
+            action: carry,
+        })
+        .unwrap();
+        rig.ui(Message::PlanDay).unwrap();
+        rig.restart();
+        let state = rig.daemon.state();
+        assert!(state.planned);
+        assert!(state.leftovers.is_empty());
+        assert_eq!(state.tasks[0].title, "Open");
+        assert_eq!(state.tasks[0].carried_from_date, Some(t0().date_naive()));
+    }
+
+    #[test]
+    fn moving_a_leftover_onto_a_full_day_is_refused() {
+        let mut rig = Rig::new();
+        rig.task("Leftover");
+        rig.utc = Utc.with_ymd_and_hms(2026, 11, 6, 9, 0, 0).unwrap();
+        rig.restart();
+        let id = rig.daemon.state().leftovers[0].id;
+        // Fill Nov 8 in the database directly.
+        let later = chrono::NaiveDate::from_ymd_opt(2026, 11, 8).unwrap();
+        let full: Vec<Task> = (50..54)
+            .map(|id| Task {
+                id,
+                title: format!("T{id}"),
+                priority: Priority::Low,
+                done: false,
+                done_on: None,
+                allocated_min: 0,
+                subtasks: vec![],
+                focus_area: None,
+                carried_from_date: None,
+            })
+            .collect();
+        rig.daemon.db.save_tasks(later, &full).unwrap();
+        let action = LeftoverAction::Move { date: later };
+        let error = rig
+            .ui(Message::ResolveLeftover {
+                task_id: id,
+                action,
+            })
+            .unwrap_err();
+        assert!(error.1.contains("at most 4"), "{}", error.1);
+        assert_eq!(rig.daemon.state().leftovers.len(), 1);
     }
 
     #[test]

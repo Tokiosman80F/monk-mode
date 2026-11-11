@@ -156,6 +156,7 @@ export function addTask(
   priority: Priority,
   allocated_min: number,
   floor = 1,
+  focus_area: string | null = null,
 ): Task[] {
   return [
     ...tasks,
@@ -167,6 +168,8 @@ export function addTask(
       done_on: null,
       allocated_min,
       subtasks: [],
+      focus_area: focus_area || null,
+      carried_from_date: null,
     },
   ];
 }
@@ -244,7 +247,7 @@ export function cleanDomain(input: string): string {
     .replace(/^www\./, "");
 }
 
-function dateKey(date: Date): string {
+export function dateKey(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${date.getFullYear()}-${month}-${day}`;

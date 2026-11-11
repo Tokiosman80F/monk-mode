@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import type { LeftoverAction } from "./types/LeftoverAction";
 import type { Settings } from "./types/Settings";
 import type { SmallItem } from "./types/SmallItem";
 import type { Snapshot } from "./types/Snapshot";
@@ -14,6 +15,9 @@ export const api = {
   updateTasks: (tasks: Task[]) => invoke<Snapshot>("update_tasks", { tasks }),
   updateSmallItems: (items: SmallItem[]) =>
     invoke<Snapshot>("update_small_items", { items }),
+  resolveLeftover: (taskId: number, action: LeftoverAction) =>
+    invoke<Snapshot>("resolve_leftover", { taskId, action }),
+  planDay: () => invoke<Snapshot>("plan_day"),
   startPomodoro: (taskId: number | null) =>
     invoke<Snapshot>("start_pomodoro", { taskId }),
   stopPomodoro: () => invoke<Snapshot>("stop_pomodoro"),

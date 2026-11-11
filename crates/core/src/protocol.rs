@@ -6,7 +6,7 @@ use ts_rs::TS;
 
 use crate::engine::{ActiveTab, BlockedSet};
 use crate::models::{Settings, State, Task};
-use crate::planner::SmallItem;
+use crate::planner::{LeftoverAction, SmallItem};
 
 pub const PIPE_NAME: &str = r"\\.\pipe\monkmode";
 
@@ -21,6 +21,12 @@ pub enum Message {
     },
     UpdateTasks(Vec<Task>),
     UpdateSmallItems(Vec<SmallItem>),
+    ResolveLeftover {
+        task_id: u32,
+        action: LeftoverAction,
+    },
+    /// Confirms the morning plan. Needs at least one task.
+    PlanDay,
     StartPomodoro {
         task_id: Option<u32>,
     },

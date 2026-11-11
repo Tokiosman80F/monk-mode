@@ -4,7 +4,7 @@ use chrono::{DateTime, Duration, NaiveDate, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::planner::SmallItem;
+use crate::planner::{Profile, SmallItem};
 
 fn strings(items: &[&str]) -> Vec<String> {
     items.iter().map(|s| s.to_string()).collect()
@@ -29,6 +29,9 @@ pub struct Settings {
     pub pomodoro_focus_min: u32,
     pub pomodoro_break_min: u32,
     pub daily_focus_target_min: u32,
+    /// Filled in by the planner's one-time setup. Settings saved before it have none.
+    #[serde(default)]
+    pub profile: Option<Profile>,
 }
 
 impl Default for Settings {
@@ -57,6 +60,7 @@ impl Default for Settings {
             pomodoro_focus_min: 50,
             pomodoro_break_min: 10,
             daily_focus_target_min: 11 * 60,
+            profile: None,
         }
     }
 }
@@ -117,6 +121,12 @@ pub struct Task {
     #[serde(default)]
     pub allocated_min: u32,
     pub subtasks: Vec<Subtask>,
+    /// One of the profile's focus areas, like `React`.
+    #[serde(default)]
+    pub focus_area: Option<String>,
+    /// Set by the service when an unfinished task moves to a later day.
+    #[serde(default)]
+    pub carried_from_date: Option<NaiveDate>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -255,6 +265,12 @@ pub struct State {
     pub small_items: Vec<SmallItem>,
     /// The lowest id no task or small item has ever used, so new ones never clash with the archive.
     pub next_id: u32,
+    /// True once today's plan is confirmed. Until then the app shows the morning prompt.
+    pub planned: bool,
+    /// Yesterday's unfinished tasks, for the morning prompt to carry, move or drop.
+    pub leftovers: Vec<Task>,
+    /// Today's row from the saved monthly goal, if there is one.
+    pub today_target: Option<String>,
     pub progress: Progress,
     /// Past days, oldest first. Kept off the wire: `state_changed` goes out every second.
     #[serde(skip)]
@@ -274,6 +290,9 @@ impl State {
             tasks: Vec::new(),
             small_items: Vec::new(),
             next_id: 1,
+            planned: false,
+            leftovers: Vec::new(),
+            today_target: None,
             progress: Progress::default(),
             history: Vec::new(),
         }

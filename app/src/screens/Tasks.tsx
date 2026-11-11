@@ -277,6 +277,11 @@ function TaskRow({
           className="text-[15px]"
           onChange={(title) => onChange({ ...task, title })}
         />
+        {task.focus_area && (
+          <span className="badge badge-ghost badge-sm whitespace-nowrap text-neutral">
+            {task.focus_area}
+          </span>
+        )}
         {reward !== null && (
           <span className="animate-xp-pop whitespace-nowrap text-xs font-semibold text-accent">
             +{reward} XP

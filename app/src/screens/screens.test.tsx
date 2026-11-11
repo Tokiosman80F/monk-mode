@@ -20,8 +20,11 @@ import Pomodoro from "./Pomodoro";
 import Rewards from "./Rewards";
 import Setup from "./Setup";
 import StatsScreen from "./Stats";
+import MorningPrompt from "./MorningPrompt";
+import PlannerSetup from "./PlannerSetup";
 import SmallWork from "./SmallWork";
 import Tasks from "./Tasks";
+import type { Snapshot } from "../types/Snapshot";
 import Today from "./Today";
 
 vi.mock("../api", () => ({
@@ -34,6 +37,8 @@ vi.mock("../api", () => ({
     startPomodoro: vi.fn(),
     stopPomodoro: vi.fn(),
     updateSmallItems: vi.fn(),
+    resolveLeftover: vi.fn(),
+    planDay: vi.fn(),
     pausePomodoro: vi.fn(),
     getStats: vi.fn(),
     installService: vi.fn(),
@@ -52,6 +57,8 @@ beforeEach(() => {
   vi.mocked(api.startPomodoro).mockResolvedValue(makeSnapshot());
   vi.mocked(api.stopPomodoro).mockResolvedValue(makeSnapshot());
   vi.mocked(api.updateSmallItems).mockResolvedValue(makeSnapshot());
+  vi.mocked(api.resolveLeftover).mockResolvedValue(makeSnapshot());
+  vi.mocked(api.planDay).mockResolvedValue(makeSnapshot());
   vi.mocked(api.pausePomodoro).mockResolvedValue(makeSnapshot());
   vi.mocked(api.startLock).mockResolvedValue(makeSnapshot());
 });
@@ -172,6 +179,8 @@ describe("Tasks", () => {
       done_on: null,
       allocated_min: 60,
       subtasks: [],
+      focus_area: null,
+      carried_from_date: null,
     });
     vi.mocked(api.updateTasks).mockResolvedValue(next);
     render(<Tasks />);
@@ -466,6 +475,8 @@ describe("Pomodoro", () => {
           done_on: null,
           allocated_min: 600,
           subtasks: [],
+          focus_area: null,
+          carried_from_date: null,
         },
       ];
       state.today.focus_sec = { "Project building": 2 * 3000 + 1200 };
@@ -517,6 +528,155 @@ describe("Pomodoro", () => {
   });
 });
 
+describe("Planner setup", () => {
+  it("saves a profile with the study hours as the daily target", async () => {
+    setStore(({ state }) => {
+      state.settings.profile = null;
+    });
+    render(<PlannerSetup />);
+    fireEvent.click(screen.getByRole("button", { name: /Continue/ }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Enter your name");
+    expect(api.updateSettings).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Your name"), {
+      target: { value: "Sam" },
+    });
+    fireEvent.change(screen.getByLabelText("Daily study hours"), {
+      target: { value: "10.5" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove focus area 3" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Monday" }));
+    fireEvent.click(screen.getByRole("button", { name: /Continue/ }));
+    await waitFor(() => expect(api.updateSettings).toHaveBeenCalled());
+    const saved = savedSettings();
+    expect(saved.daily_focus_target_min).toBe(630);
+    expect(saved.profile).toEqual({
+      name: "Sam",
+      focus_areas: [
+        { name: "React", target_min: 180 },
+        { name: "Products", target_min: 360 },
+      ],
+      week_start: "monday",
+    });
+  });
+});
+
+describe("Morning prompt", () => {
+  function unplanned(change: (state: Snapshot["state"]) => void = () => {}) {
+    setStore(({ state }) => {
+      state.planned = false;
+      state.tasks = [];
+      change(state);
+    });
+  }
+
+  it("can't start the day with no tasks, even with small work", async () => {
+    unplanned();
+    render(<MorningPrompt />);
+    expect(screen.getByText("Call the bank")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Start my day/ }));
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Write at least one task",
+    );
+    expect(api.planDay).not.toHaveBeenCalled();
+  });
+
+  it("adds a task with a focus area and an optional estimate", async () => {
+    unplanned();
+    render(<MorningPrompt />);
+    fireEvent.change(screen.getByLabelText("New task"), {
+      target: { value: "Hooks chapter" },
+    });
+    fireEvent.change(screen.getByLabelText("Focus area"), {
+      target: { value: "Products" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add task" }));
+    await waitFor(() => expect(api.updateTasks).toHaveBeenCalled());
+    expect(savedTasks()).toEqual([
+      expect.objectContaining({
+        title: "Hooks chapter",
+        focus_area: "Products",
+        allocated_min: 0,
+        id: 4,
+      }),
+    ]);
+  });
+
+  it("blocks a 5th task with a clear message", () => {
+    unplanned((state) => {
+      state.tasks = [1, 2, 3, 4].map((id) => ({
+        id,
+        title: `Task ${id}`,
+        priority: "low" as const,
+        done: false,
+        done_on: null,
+        allocated_min: 0,
+        subtasks: [],
+        focus_area: null,
+        carried_from_date: null,
+      }));
+    });
+    render(<MorningPrompt />);
+    expect(screen.queryByLabelText("New task")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("4 tasks");
+  });
+
+  it("shows today's target and offers yesterday's unfinished tasks", async () => {
+    unplanned((state) => {
+      state.today_target = "Finish the hooks chapter";
+      state.leftovers = [
+        {
+          id: 9,
+          title: "Recipe app",
+          priority: "high",
+          done: false,
+          done_on: null,
+          allocated_min: 180,
+          subtasks: [],
+          focus_area: "Products",
+          carried_from_date: null,
+        },
+      ];
+    });
+    // The service answers with the leftover still there, so both buttons can be tried.
+    vi.mocked(api.resolveLeftover).mockImplementation(
+      async () => useStore.getState().snapshot!,
+    );
+    render(<MorningPrompt />);
+    expect(screen.getByText("Finish the hooks chapter")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Carry Recipe app to today" }),
+    );
+    await waitFor(() =>
+      expect(api.resolveLeftover).toHaveBeenCalledWith(9, { kind: "carry" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Move Recipe app to another day" }),
+    );
+    const day = screen.getByLabelText("Day to move Recipe app to");
+    expect(day).toHaveAttribute("min", "2026-11-06");
+    fireEvent.change(day, { target: { value: "2026-11-09" } });
+    fireEvent.click(screen.getByRole("button", { name: "Move" }));
+    await waitFor(() =>
+      expect(api.resolveLeftover).toHaveBeenCalledWith(9, {
+        kind: "move",
+        date: "2026-11-09",
+      }),
+    );
+  });
+
+  it("starts the day once there's a task", async () => {
+    unplanned((state) => {
+      state.tasks = makeSnapshot().state.tasks;
+    });
+    render(<MorningPrompt />);
+    fireEvent.click(screen.getByRole("button", { name: /Start my day/ }));
+    await waitFor(() => expect(api.planDay).toHaveBeenCalled());
+  });
+});
+
 describe("Task limit", () => {
   it("stops offering new tasks at 4", () => {
     setStore(({ state }) => {
@@ -528,6 +688,8 @@ describe("Task limit", () => {
         done_on: null,
         allocated_min: 60,
         subtasks: [],
+        focus_area: null,
+        carried_from_date: null,
       }));
     });
     render(<Tasks />);
@@ -588,6 +750,8 @@ describe("Renaming", () => {
           subtasks: [
             { id: 1, title: "Old step", done: false, allocated_min: 0 },
           ],
+          focus_area: null,
+          carried_from_date: null,
         },
       ];
     });
@@ -613,6 +777,8 @@ describe("Renaming", () => {
           subtasks: [
             { id: 1, title: "Old step", done: false, allocated_min: 0 },
           ],
+          focus_area: null,
+          carried_from_date: null,
         },
       ];
     });
@@ -637,6 +803,8 @@ describe("Renaming", () => {
           done_on: null,
           allocated_min: 60,
           subtasks: [],
+          focus_area: null,
+          carried_from_date: null,
         },
       ];
     });

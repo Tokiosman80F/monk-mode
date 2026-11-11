@@ -20,4 +20,16 @@ small_items: Array<SmallItem>,
 /**
  * The lowest id no task or small item has ever used, so new ones never clash with the archive.
  */
-next_id: number, progress: Progress, };
+next_id: number, 
+/**
+ * True once today's plan is confirmed. Until then the app shows the morning prompt.
+ */
+planned: boolean, 
+/**
+ * Yesterday's unfinished tasks, for the morning prompt to carry, move or drop.
+ */
+leftovers: Array<Task>, 
+/**
+ * Today's row from the saved monthly goal, if there is one.
+ */
+today_target: string | null, progress: Progress, };

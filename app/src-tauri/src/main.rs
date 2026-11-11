@@ -11,7 +11,7 @@ use std::process::Command;
 
 use chrono::{DateTime, Utc};
 use monk_core::models::{Settings, Task};
-use monk_core::planner::SmallItem;
+use monk_core::planner::{LeftoverAction, SmallItem};
 use monk_core::protocol::{ErrorCode, Message, ReplyError};
 use pipe::Pipe;
 use serde_json::Value;
@@ -40,6 +40,21 @@ async fn start_lock(pipe: State<'_, Pipe>, ends_at: DateTime<Utc>) -> CommandRes
 #[tauri::command]
 async fn update_small_items(pipe: State<'_, Pipe>, items: Vec<SmallItem>) -> CommandResult {
     pipe.call(Message::UpdateSmallItems(items)).await
+}
+
+#[tauri::command]
+async fn resolve_leftover(
+    pipe: State<'_, Pipe>,
+    task_id: u32,
+    action: LeftoverAction,
+) -> CommandResult {
+    pipe.call(Message::ResolveLeftover { task_id, action })
+        .await
+}
+
+#[tauri::command]
+async fn plan_day(pipe: State<'_, Pipe>) -> CommandResult {
+    pipe.call(Message::PlanDay).await
 }
 
 #[tauri::command]
@@ -138,6 +153,8 @@ fn main() {
             start_lock,
             update_tasks,
             update_small_items,
+            resolve_leftover,
+            plan_day,
             start_pomodoro,
             stop_pomodoro,
             pause_pomodoro,

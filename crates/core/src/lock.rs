@@ -40,6 +40,8 @@ pub enum InvalidSettings {
     BadDomain(String),
     #[error("A lock must end in the future.")]
     LockEndsInPast,
+    #[error("{0}")]
+    BadProfile(String),
 }
 
 /// Run on every incoming settings change. Requiring clean domains also keeps `validate_change`
@@ -56,6 +58,9 @@ pub fn validate_settings(s: &Settings) -> Result<(), InvalidSettings> {
     }
     if s.daily_focus_target_min > MINUTES_PER_DAY {
         return Err(InvalidSettings::TargetTooHigh);
+    }
+    if let Some(profile) = &s.profile {
+        profile.validate().map_err(InvalidSettings::BadProfile)?;
     }
     let allowance = s.allowance_sites.iter().map(|site| &site.domain);
     for site in allowance.clone().chain(&s.always_blocked) {
