@@ -4,7 +4,7 @@
 
 ![Adding a task with subtasks, starting a focus session, then checking the site limits and rewards](docs/screenshots/demo.gif)
 
-Each distracting site gets a small daily allowance. When it runs out, the site closes until midnight in every browser and app. Plan your day as tasks with a priority and a time, run focus sessions, and earn XP as you go. A commitment lock means that until the date you choose, the rules can only get stricter.
+Each distracting site gets a small daily allowance. When it runs out, the site closes until 6 AM in every browser and app. Plan your day as tasks with a priority and a time, run focus sessions, and earn XP as you go. A commitment lock means that until the date you choose, the rules can only get stricter.
 
 ## Features
 

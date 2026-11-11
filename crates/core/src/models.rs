@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use chrono::{DateTime, NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, Duration, NaiveDate, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -271,18 +271,26 @@ impl State {
     }
 }
 
-/// The current time, plus the local date it falls on. Keeps the engine free of OS time zone calls.
+/// The local hour a day starts. Work at 01:00 still belongs to the day before.
+pub const DAY_START_HOUR: i64 = 6;
+
+/// The day a moment belongs to: 06:00 to 05:59 local time. Every date in the app comes from here.
+pub fn app_day<Tz: TimeZone>(utc: DateTime<Utc>, tz: &Tz) -> NaiveDate {
+    (utc.with_timezone(tz).naive_local() - Duration::hours(DAY_START_HOUR)).date()
+}
+
+/// The current time, plus the app day it falls on. Keeps the engine free of OS time zone calls.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Now {
     pub utc: DateTime<Utc>,
-    pub local_date: NaiveDate,
+    pub app_day: NaiveDate,
 }
 
 impl Now {
     pub fn new<Tz: TimeZone>(utc: DateTime<Utc>, tz: &Tz) -> Self {
         Self {
             utc,
-            local_date: utc.with_timezone(tz).date_naive(),
+            app_day: app_day(utc, tz),
         }
     }
 }
@@ -290,6 +298,29 @@ impl Now {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_day_runs_from_six_to_five_fifty_nine() {
+        // Asia/Dhaka is UTC+6 with no daylight saving.
+        let dhaka = chrono::FixedOffset::east_opt(6 * 3600).unwrap();
+        let local = |d, h, m| {
+            dhaka
+                .with_ymd_and_hms(2026, 11, d, h, m, 0)
+                .unwrap()
+                .to_utc()
+        };
+        let nov = |d| NaiveDate::from_ymd_opt(2026, 11, d).unwrap();
+        assert_eq!(app_day(local(12, 6, 0), &dhaka), nov(12));
+        assert_eq!(app_day(local(12, 23, 59), &dhaka), nov(12));
+        assert_eq!(app_day(local(13, 1, 0), &dhaka), nov(12));
+        assert_eq!(app_day(local(13, 5, 59), &dhaka), nov(12));
+        assert_eq!(app_day(local(13, 6, 0), &dhaka), nov(13));
+        // Month and year boundaries.
+        assert_eq!(
+            app_day(local(1, 3, 0), &dhaka),
+            NaiveDate::from_ymd_opt(2026, 10, 31).unwrap()
+        );
+    }
 
     #[test]
     fn defaults_match_the_prd() {

@@ -191,9 +191,9 @@ export default function Setup() {
         {step === 0 && (
           <Card title="Welcome">
             <p>
-              A daily limit for each distracting site, then it closes until
-              midnight. The worst ones stay closed. A lock keeps you to it on a
-              bad day.
+              A daily limit for each distracting site, then it closes until 6
+              AM. The worst ones stay closed. A lock keeps you to it on a bad
+              day.
             </p>
             <p>A few steps, then back to work.</p>
             <Nav next={next} nextLabel="Get started" />

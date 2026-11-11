@@ -7,9 +7,10 @@ use monk_core::models::{FocusKind, FocusSession, Lock, Settings, Task, UsageDay}
 use rusqlite::{params, Connection, OptionalExtension};
 use thiserror::Error;
 
-const MIGRATIONS: [&str; 2] = [
+const MIGRATIONS: [&str; 3] = [
     include_str!("../migrations/001_init.sql"),
     include_str!("../migrations/002_tasks_and_limits.sql"),
+    include_str!("../migrations/003_planner.sql"),
 ];
 
 #[derive(Debug, Error)]
@@ -251,6 +252,77 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let db = Db::open(dir.path()).unwrap();
         (dir, db)
+    }
+
+    fn run(db: &Db, sql: &str) -> std::result::Result<usize, String> {
+        db.conn.execute(sql, []).map_err(|e| e.to_string())
+    }
+
+    fn add_task(db: &Db, id: u32, date: &str) -> std::result::Result<usize, String> {
+        run(
+            db,
+            &format!("INSERT INTO task (id, date, title) VALUES ({id}, '{date}', 'T')"),
+        )
+    }
+
+    #[test]
+    fn the_database_refuses_a_fifth_task_on_a_day() {
+        let (_dir, db) = temp_db();
+        for id in 1..=4 {
+            add_task(&db, id, "2026-11-12").unwrap();
+        }
+        let fifth = add_task(&db, 5, "2026-11-12");
+        assert!(fifth.unwrap_err().contains("at most 4 tasks"));
+        // Another day is fine, but moving a task onto a full day is not.
+        add_task(&db, 5, "2026-11-13").unwrap();
+        let moved = run(&db, "UPDATE task SET date = '2026-11-12' WHERE id = 5");
+        assert!(moved.unwrap_err().contains("at most 4 tasks"));
+        // A dropped task frees its place.
+        run(&db, "UPDATE task SET status = 'dropped' WHERE id = 1").unwrap();
+        run(&db, "UPDATE task SET date = '2026-11-12' WHERE id = 5").unwrap();
+    }
+
+    #[test]
+    fn the_database_refuses_to_change_a_saved_goal() {
+        let (_dir, db) = temp_db();
+        run(
+            &db,
+            "INSERT INTO goal (id, level, period_start, period_end, title)
+             VALUES (1, 'month', '2026-11-12', '2026-11-30', 'Ship it')",
+        )
+        .unwrap();
+        run(
+            &db,
+            "INSERT INTO goal_day (goal_id, date, target) VALUES (1, '2026-11-12', 'Plan')",
+        )
+        .unwrap();
+        // Still a draft, so it can change.
+        run(&db, "UPDATE goal_day SET target = 'Plan v2'").unwrap();
+        run(&db, "UPDATE goal SET locked_at = '2026-11-11T12:00:00Z'").unwrap();
+
+        for sql in [
+            "UPDATE goal SET title = 'Easier'",
+            "DELETE FROM goal",
+            "UPDATE goal_day SET target = 'Rest'",
+            "DELETE FROM goal_day",
+            "INSERT INTO goal_day (goal_id, date, target) VALUES (1, '2026-11-13', 'x')",
+        ] {
+            assert!(
+                run(&db, sql).unwrap_err().contains("can't be changed"),
+                "{sql}"
+            );
+        }
+        // Marking how the day went is still allowed.
+        run(&db, "UPDATE goal_day SET status = 'done'").unwrap();
+    }
+
+    #[test]
+    fn a_day_gets_one_penalty_at_most() {
+        let (_dir, db) = temp_db();
+        let penalty = "INSERT INTO penalty (date, reason, days_added, created_at)
+                       VALUES ('2026-11-12', 'no_plan', 1, '2026-11-13T00:00:00Z')";
+        run(&db, penalty).unwrap();
+        assert!(run(&db, penalty).is_err());
     }
 
     #[test]

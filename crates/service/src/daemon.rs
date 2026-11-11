@@ -133,7 +133,7 @@ impl<P: Platform> Daemon<P> {
         let last_seen = last_seen.map_or(utc, |seen| effective_now(utc, seen));
         let now = to_now(last_seen);
 
-        let mut state = State::new(now.local_date);
+        let mut state = State::new(now.app_day);
         state.settings = db.load_settings().ok().flatten().unwrap_or_else(|| {
             let defaults = Settings::default();
             if let Err(e) = db.save_settings(&defaults) {
@@ -146,14 +146,14 @@ impl<P: Platform> Daemon<P> {
             error!("Couldn't read tasks: {e}");
             Vec::new()
         });
-        // The service may have been off at midnight.
-        prune_tasks(&mut state.tasks, now.local_date);
+        // The service may have been off at 6 AM.
+        prune_tasks(&mut state.tasks, now.app_day);
 
         let mut history = db.load_days(HISTORY_DAYS).unwrap_or_else(|e| {
             error!("Couldn't read usage history: {e}");
             Vec::new()
         });
-        if let Some(today) = history.pop_if(|d| d.date >= now.local_date) {
+        if let Some(today) = history.pop_if(|d| d.date >= now.app_day) {
             state.today = today;
         }
         state.history = history;
@@ -397,7 +397,7 @@ impl<P: Platform> Daemon<P> {
                 Ok(self.state_json())
             }
             (Client::Ui, Message::UpdateTasks(tasks)) => {
-                apply_tasks(&mut self.state, tasks, now.local_date).map_err(invalid)?;
+                apply_tasks(&mut self.state, tasks, now.app_day).map_err(invalid)?;
                 self.db
                     .save_tasks(&self.state.tasks)
                     .map_err(|e| invalid(format!("Couldn't save tasks: {e}")))?;
@@ -728,12 +728,12 @@ pub mod tests {
     }
 
     #[test]
-    fn midnight_saves_yesterday_and_a_restart_keeps_it_in_history() {
+    fn six_am_saves_yesterday_and_a_restart_keeps_it_in_history() {
         let mut rig = Rig::new();
         rig.tab(1, true);
         rig.run(2);
         rig.daemon.ext_disconnected(1);
-        rig.utc = Utc.with_ymd_and_hms(2026, 11, 6, 0, 0, 0).unwrap();
+        rig.utc = Utc.with_ymd_and_hms(2026, 11, 6, 6, 0, 0).unwrap();
         let events = rig.run(1);
         assert!(matches!(events[..], [Event::DayRolled(_)]));
         assert_eq!(rig.used(), 0);
@@ -891,7 +891,7 @@ pub mod tests {
     }
 
     #[test]
-    fn a_finished_task_is_gone_after_midnight_even_if_the_service_was_off() {
+    fn a_finished_task_is_gone_after_six_am_even_if_the_service_was_off() {
         let mut rig = Rig::new();
         rig.task("Ship");
         let mut tasks = rig.daemon.state().tasks.clone();

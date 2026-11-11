@@ -307,6 +307,22 @@ mod tests {
     }
 
     #[test]
+    fn a_task_done_at_one_am_counts_toward_the_day_before() {
+        use chrono::TimeZone;
+        let dhaka = chrono::FixedOffset::east_opt(6 * 3600).unwrap();
+        let one_am = dhaka
+            .with_ymd_and_hms(2026, 11, 13, 1, 0, 0)
+            .unwrap()
+            .to_utc();
+        let day = crate::models::app_day(one_am, &dhaka);
+        let mut s = State::new(day);
+        apply_tasks(&mut s, vec![task(1, Priority::High, false)], day).unwrap();
+        apply_tasks(&mut s, vec![task(1, Priority::High, true)], day).unwrap();
+        assert_eq!(s.tasks[0].done_on, Some(date(12)));
+        assert_eq!(s.today.tasks_done, 1);
+    }
+
+    #[test]
     fn a_new_day_drops_finished_tasks_and_keeps_the_rest() {
         let mut s = State::new(date(5));
         apply(

@@ -241,6 +241,12 @@ function dateKey(date: Date): string {
   return `${date.getFullYear()}-${month}-${day}`;
 }
 
+/** `2026-11-12` as a local date. */
+export function fromDateKey(key: string): Date {
+  const [year, month, day] = key.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
 export interface ChartDay {
   date: string;
   focusSec: number;

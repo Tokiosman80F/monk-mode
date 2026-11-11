@@ -94,10 +94,10 @@ pub fn tick(
 
 /// Only ever moves forward, so a time zone change can't hand back a used-up allowance.
 fn roll_over(state: &mut State, now: Now, events: &mut Vec<Event>) {
-    if now.local_date > state.today.date {
-        let finished = std::mem::replace(&mut state.today, UsageDay::new(now.local_date));
+    if now.app_day > state.today.date {
+        let finished = std::mem::replace(&mut state.today, UsageDay::new(now.app_day));
         state.history.push(finished.clone());
-        prune_tasks(&mut state.tasks, now.local_date);
+        prune_tasks(&mut state.tasks, now.app_day);
         events.push(Event::DayRolled(finished));
     }
 }
@@ -255,7 +255,7 @@ fn blocked_with(
     permanent: Option<&str>,
 ) -> BlockedSet {
     // A stored day that's already over has no bearing on today's allowance.
-    let is_today = state.today.date == now.local_date;
+    let is_today = state.today.date == now.app_day;
     let used_up = |site: &AllowanceSite| {
         let used = if is_today {
             state.today.site_used(&site.domain)
@@ -324,7 +324,7 @@ mod tests {
 
     /// Every site on a 10-minute limit.
     fn state() -> State {
-        let mut s = State::new(now().local_date);
+        let mut s = State::new(now().app_day);
         set_limits(&mut s, 10);
         s
     }
@@ -458,10 +458,13 @@ mod tests {
     // Day rollover
 
     #[test]
-    fn midnight_resets_the_day_and_saves_history() {
+    fn six_am_resets_the_day_and_saves_history() {
         let mut s = state();
         tick(&mut s, 600, now(), Some(&youtube()));
-        let events = tick(&mut s, 1, at(2026, 11, 6, 0), None);
+        // Midnight and the small hours still belong to Nov 5.
+        assert!(tick(&mut s, 1, at(2026, 11, 6, 0), None).is_empty());
+        assert!(tick(&mut s, 1, at(2026, 11, 6, 5), None).is_empty());
+        let events = tick(&mut s, 1, at(2026, 11, 6, 6), None);
         assert!(matches!(&events[..], [Event::DayRolled(d)] if d.allowance_used_sec == 600));
         assert_eq!(s.today, UsageDay::new(date(2026, 11, 6)));
         assert_eq!(s.history.len(), 1);
@@ -469,21 +472,22 @@ mod tests {
     }
 
     #[test]
-    fn dst_changes_only_roll_at_local_midnight() {
+    fn dst_changes_only_roll_at_six_local_time() {
         let edt = FixedOffset::west_opt(4 * 3600).unwrap();
         let est = FixedOffset::west_opt(5 * 3600).unwrap();
         let utc =
             |d, h, m| -> DateTime<Utc> { Utc.with_ymd_and_hms(2026, 11, d, h, m, 0).unwrap() };
 
         let mut s = State::new(date(2026, 11, 1));
-        // New York, Nov 1 2026: 01:30 happens twice as the clocks go back.
+        // New York, Nov 1 2026: 01:30 happens twice as the clocks go back. Both are Oct 31's day.
         assert!(tick(&mut s, 1, Now::new(utc(1, 5, 30), &edt), None).is_empty());
         assert!(tick(&mut s, 1, Now::new(utc(1, 6, 30), &est), None).is_empty());
-        // This day has 25 hours: 24 hours after midnight is still 23:00 on Nov 1.
-        assert!(tick(&mut s, 1, Now::new(utc(2, 4, 0), &est), None).is_empty());
+        // 06:00 EST on Nov 1 starts Nov 1.
+        assert!(tick(&mut s, 1, Now::new(utc(1, 11, 0), &est), None).is_empty());
         assert_eq!(s.today.date, date(2026, 11, 1));
-        // Real local midnight.
-        let events = tick(&mut s, 1, Now::new(utc(2, 5, 0), &est), None);
+        // 05:00 EST on Nov 2 is still Nov 1.
+        assert!(tick(&mut s, 1, Now::new(utc(2, 10, 0), &est), None).is_empty());
+        let events = tick(&mut s, 1, Now::new(utc(2, 11, 0), &est), None);
         assert!(matches!(&events[..], [Event::DayRolled(_)]));
         assert_eq!(s.today.date, date(2026, 11, 2));
     }
@@ -559,7 +563,7 @@ mod tests {
         let task = with_task(&mut s, "React");
         start_pomodoro(&mut s, task, now()).unwrap();
         tick(&mut s, 60, now(), None);
-        tick(&mut s, 60, at(2026, 11, 6, 0), None);
+        tick(&mut s, 60, at(2026, 11, 6, 6), None);
         assert_eq!(s.history[0].focus_sec["React"], 60);
         assert_eq!(s.today.focus_sec["React"], 60);
         assert!(matches!(s.pomodoro, PomodoroState::Focus { .. }));
@@ -613,8 +617,8 @@ mod tests {
         with_task(&mut s, "Open");
         with_task(&mut s, "Finished");
         s.tasks[1].done = true;
-        s.tasks[1].done_on = Some(now().local_date);
-        tick(&mut s, 1, at(2026, 11, 6, 0), None);
+        s.tasks[1].done_on = Some(now().app_day);
+        tick(&mut s, 1, at(2026, 11, 6, 6), None);
         assert_eq!(s.tasks.len(), 1);
         assert_eq!(s.tasks[0].title, "Open");
     }
@@ -757,7 +761,7 @@ mod tests {
         let mut s = state();
         tick(&mut s, 600, now(), Some(&youtube()));
         assert!(!has(
-            &compute_blocked(&s, at(2026, 11, 6, 0), true),
+            &compute_blocked(&s, at(2026, 11, 6, 6), true),
             "youtube.com"
         ));
     }

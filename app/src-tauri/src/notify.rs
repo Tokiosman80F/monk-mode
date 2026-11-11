@@ -107,7 +107,7 @@ pub fn notices(previous: &State, current: &State) -> Vec<(String, String)> {
                 notice(format!("{domain}: 30 seconds left"), "Time to wrap up.");
             }
             if before > 0 && after == 0 {
-                notice(format!("{domain} is closed"), "It opens again at midnight.");
+                notice(format!("{domain} is closed"), "It opens again at 6 AM.");
             }
         }
     }

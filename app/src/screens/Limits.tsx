@@ -146,7 +146,7 @@ export default function Limits() {
       <Card>
         <p className="text-sm text-neutral">
           {tab === "limits"
-            ? "Each site gets its own minutes, up to 180 a day, then closes until midnight. A subdomain also counts towards its main site."
+            ? "Each site gets its own minutes, up to 180 a day, then closes until 6 AM. A subdomain also counts towards its main site."
             : "These are blocked all day, every day."}
           {locked && tab === "limits" && ` ${tip}: you can only lower these.`}
         </p>

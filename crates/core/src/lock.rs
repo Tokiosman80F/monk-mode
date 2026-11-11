@@ -418,7 +418,7 @@ mod tests {
     #[test]
     fn clock_rollback_does_not_reset_the_allowance() {
         let now = Now::new(t0(), &Utc);
-        let mut state = State::new(now.local_date);
+        let mut state = State::new(now.app_day);
         state
             .today
             .site_used_sec

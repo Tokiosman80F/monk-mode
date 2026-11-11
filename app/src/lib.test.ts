@@ -8,6 +8,7 @@ import {
   browserName,
   cleanDomain,
   fillDays,
+  fromDateKey,
   formatClock,
   formatDuration,
   formatLeft,
@@ -299,5 +300,14 @@ describe("sessionRing", () => {
       done: 0,
       current: 0,
     });
+  });
+});
+
+describe("fromDateKey", () => {
+  it("reads a service day as a local date", () => {
+    const date = fromDateKey("2026-11-12");
+    expect([date.getFullYear(), date.getMonth(), date.getDate()]).toEqual([
+      2026, 10, 12,
+    ]);
   });
 });

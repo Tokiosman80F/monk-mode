@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, errorText } from "../api";
-import { fillDays, formatDuration } from "../lib";
+import { fillDays, formatDuration, fromDateKey } from "../lib";
 import { useStore } from "../store";
 import type { Stats } from "../types/Stats";
 import { Card, ErrorNote, PageTitle } from "../ui";
@@ -74,6 +74,8 @@ function Bars({
 
 export default function StatsScreen() {
   const settings = useStore((s) => s.snapshot?.state.settings);
+  // The service day runs 06:00 to 05:59, so at 01:00 it is still yesterday.
+  const today = useStore((s) => s.snapshot?.state.today.date);
   const [range, setRange] = useState(7);
   const [stats, setStats] = useState<Stats | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -110,7 +112,11 @@ export default function StatsScreen() {
         <>
           <Card title="Focus time">
             <Bars
-              days={fillDays(stats.days, range, new Date())}
+              days={fillDays(
+                stats.days,
+                range,
+                today ? fromDateKey(today) : new Date(),
+              )}
               targetSec={(settings?.daily_focus_target_min ?? 0) * 60}
             />
             <p className="text-sm text-neutral">
