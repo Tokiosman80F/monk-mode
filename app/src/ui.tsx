@@ -29,12 +29,14 @@ export function Card({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-box border border-base-300 bg-base-200">
-      <div className="flex flex-col gap-4 p-5">
+    <section className="card card-bordered border-base-300 bg-base-200">
+      <div className="card-body gap-4 p-5">
         {(title || action) && (
           <div className="flex items-center justify-between gap-4">
             {title && (
-              <h2 className="font-display text-lg font-medium">{title}</h2>
+              <h2 className="card-title font-display text-lg font-medium">
+                {title}
+              </h2>
             )}
             {action}
           </div>

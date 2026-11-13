@@ -73,25 +73,27 @@ export default function Rewards() {
                 <li
                   key={id}
                   data-testid={earned ? "earned" : "unearned"}
-                  className={`flex flex-col items-center gap-2 rounded-box border p-4 text-center ${
+                  className={`card card-bordered ${
                     earned ? "border-accent" : "border-base-300"
                   }`}
                 >
-                  {earned ? (
-                    <Icon
-                      size={28}
-                      aria-hidden="true"
-                      className="text-accent"
-                    />
-                  ) : (
-                    <LockIcon
-                      size={28}
-                      aria-hidden="true"
-                      className="text-base-300"
-                    />
-                  )}
-                  <span className="font-medium">{name}</span>
-                  <span className="text-xs text-neutral">{how}</span>
+                  <div className="card-body items-center gap-2 p-4 text-center">
+                    {earned ? (
+                      <Icon
+                        size={28}
+                        aria-hidden="true"
+                        className="text-accent"
+                      />
+                    ) : (
+                      <LockIcon
+                        size={28}
+                        aria-hidden="true"
+                        className="text-base-300"
+                      />
+                    )}
+                    <span className="font-medium">{name}</span>
+                    <span className="text-xs text-neutral">{how}</span>
+                  </div>
                 </li>
               );
             })}

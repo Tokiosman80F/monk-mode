@@ -128,59 +128,63 @@ export default function Pomodoro() {
 
   return (
     <section
-      className={`flex flex-col items-center gap-4 rounded-box border bg-base-200 p-5 ${focusing && !paused ? "border-secondary" : "border-base-300"}`}
+      className={`card card-bordered bg-base-200 ${focusing && !paused ? "border-secondary" : "border-base-300"}`}
     >
-      <div className="flex w-full items-center justify-between gap-3">
-        <h2 className="truncate font-display text-lg font-medium">
-          {focusing ? `Focus: ${pomodoro.task_title}` : "Break"}
-        </h2>
-        <span className={`text-sm ${paused ? "text-warning" : "text-neutral"}`}>
-          {paused ? "Paused" : focusing ? "Sites with limits closed" : "Rest"}
-        </span>
-      </div>
-      <div className="relative size-60">
-        <Ring {...ring} paused={paused} />
-        <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+      <div className="card-body items-center gap-4 p-5">
+        <div className="flex w-full items-center justify-between gap-3">
+          <h2 className="card-title truncate font-display text-lg font-medium">
+            {focusing ? `Focus: ${pomodoro.task_title}` : "Break"}
+          </h2>
           <span
-            role="timer"
-            className={`font-display text-5xl font-light tabular-nums tracking-tight ${paused ? "text-neutral" : ""}`}
+            className={`text-sm ${paused ? "text-warning" : "text-neutral"}`}
           >
-            {formatClock(pomodoro.remaining_sec)}
-          </span>
-          <span className="mt-1 text-sm text-neutral">
-            {focusing
-              ? `Session ${ring.done + 1} of ${ring.total}`
-              : task
-                ? `${ring.done} of ${ring.total} sessions done`
-                : "Back to work after this"}
-          </span>
-          <span
-            className={`text-sm ${paused ? "text-warning" : "text-secondary"}`}
-          >
-            {paused ? "Paused" : `Ends at ${endsAt(pomodoro.remaining_sec)}`}
+            {paused ? "Paused" : focusing ? "Sites with limits closed" : "Rest"}
           </span>
         </div>
-      </div>
-      <div className="flex items-center gap-3">
-        {focusing && (
-          <button
-            className="btn btn-circle btn-secondary"
-            aria-label={paused ? "Resume" : "Pause"}
-            onClick={() => void pause()}
-          >
-            {paused ? (
-              <Play size={20} aria-hidden="true" />
-            ) : (
-              <Pause size={20} aria-hidden="true" />
-            )}
+        <div className="relative size-60">
+          <Ring {...ring} paused={paused} />
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+            <span
+              role="timer"
+              className={`font-display text-5xl font-light tabular-nums tracking-tight ${paused ? "text-neutral" : ""}`}
+            >
+              {formatClock(pomodoro.remaining_sec)}
+            </span>
+            <span className="mt-1 text-sm text-neutral">
+              {focusing
+                ? `Session ${ring.done + 1} of ${ring.total}`
+                : task
+                  ? `${ring.done} of ${ring.total} sessions done`
+                  : "Back to work after this"}
+            </span>
+            <span
+              className={`text-sm ${paused ? "text-warning" : "text-secondary"}`}
+            >
+              {paused ? "Paused" : `Ends at ${endsAt(pomodoro.remaining_sec)}`}
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          {focusing && (
+            <button
+              className="btn btn-circle btn-secondary"
+              aria-label={paused ? "Resume" : "Pause"}
+              onClick={() => void pause()}
+            >
+              {paused ? (
+                <Play size={20} aria-hidden="true" />
+              ) : (
+                <Pause size={20} aria-hidden="true" />
+              )}
+            </button>
+          )}
+          <button className="btn btn-ghost btn-sm" onClick={() => void stop()}>
+            <Square size={14} aria-hidden="true" />
+            {focusing ? "Stop" : "Skip break"}
           </button>
-        )}
-        <button className="btn btn-ghost btn-sm" onClick={() => void stop()}>
-          <Square size={14} aria-hidden="true" />
-          {focusing ? "Stop" : "Skip break"}
-        </button>
+        </div>
+        <ErrorNote message={error} />
       </div>
-      <ErrorNote message={error} />
     </section>
   );
 }
