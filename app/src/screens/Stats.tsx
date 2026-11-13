@@ -77,9 +77,10 @@ function Bars({
             {showValues && day.focusSec >= 60 && (
               <text
                 x={i * slot + slot / 2}
-                y={y(day.focusSec) - 6}
+                // Inside the top of a tall bar, so it never crosses the target line.
+                y={height > 28 ? y(day.focusSec) + 18 : y(day.focusSec) - 6}
                 textAnchor="middle"
-                className="fill-base-content text-[12px]"
+                className={`text-[12px] font-medium ${height > 28 && day.focusSec >= targetSec ? "fill-secondary-content" : "fill-base-content"}`}
               >
                 {formatDuration(day.focusSec)}
               </text>
