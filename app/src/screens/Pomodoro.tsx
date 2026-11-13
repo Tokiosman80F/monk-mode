@@ -150,7 +150,9 @@ export default function Pomodoro() {
           <span className="mt-1 text-sm text-neutral">
             {focusing
               ? `Session ${ring.done + 1} of ${ring.total}`
-              : `${ring.done} of ${ring.total} sessions done`}
+              : task
+                ? `${ring.done} of ${ring.total} sessions done`
+                : "Back to work after this"}
           </span>
           <span
             className={`text-sm ${paused ? "text-warning" : "text-secondary"}`}

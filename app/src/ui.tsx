@@ -1,7 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import logo from "./assets/logo.svg?raw";
 import { quoteFor } from "./quotes";
-import type { Progress } from "./types/Progress";
 
 export function Logo({
   breathing = false,
@@ -98,35 +97,6 @@ export function DayHeader() {
           {quote.by}
         </figcaption>
       </figure>
-    </div>
-  );
-}
-
-export function LevelBar({ progress }: { progress: Progress }) {
-  const { level, level_xp: into, next_level_xp: next } = progress;
-  return (
-    <div className="flex w-52 items-center gap-3">
-      <span
-        key={level}
-        className="flex h-10 w-10 shrink-0 animate-fade-in items-center justify-center rounded-full bg-accent font-display text-base font-medium text-accent-content"
-        aria-label={`Level ${level}`}
-      >
-        {level}
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex justify-between text-xs text-neutral">
-          <span>Level {level}</span>
-          <span>
-            {into} / {next} XP
-          </span>
-        </div>
-        <progress
-          className="progress progress-accent h-1.5 w-full"
-          aria-label="XP to the next level"
-          value={into}
-          max={Math.max(next, 1)}
-        />
-      </div>
     </div>
   );
 }

@@ -53,21 +53,21 @@ function Leftover({
       {moveTo === null ? (
         <span className="flex gap-1">
           <button
-            className="btn btn-ghost btn-xs"
+            className="btn btn-outline btn-sm"
             aria-label={`Carry ${task.title} to today`}
             onClick={() => onResolve({ kind: "carry" })}
           >
-            Carry
+            Do today
           </button>
           <button
-            className="btn btn-ghost btn-xs"
+            className="btn btn-ghost btn-sm"
             aria-label={`Move ${task.title} to another day`}
             onClick={() => setMoveTo(tomorrow)}
           >
-            Move
+            Another day
           </button>
           <button
-            className="btn btn-ghost btn-xs text-neutral"
+            className="btn btn-ghost btn-sm text-neutral"
             aria-label={`Drop ${task.title}`}
             onClick={() => onResolve({ kind: "drop" })}
           >
@@ -78,20 +78,20 @@ function Leftover({
         <span className="flex items-center gap-1">
           <input
             type="date"
-            className="input input-xs input-bordered"
+            className="input input-sm input-bordered"
             aria-label={`Day to move ${task.title} to`}
             min={tomorrow}
             value={moveTo}
             onChange={(e) => setMoveTo(e.target.value)}
           />
           <button
-            className="btn btn-ghost btn-xs"
+            className="btn btn-outline btn-sm"
             onClick={() => moveTo && onResolve({ kind: "move", date: moveTo })}
           >
             Move
           </button>
           <button
-            className="btn btn-ghost btn-xs px-1"
+            className="btn btn-ghost btn-sm px-1"
             aria-label="Cancel moving"
             onClick={() => setMoveTo(null)}
           >
@@ -116,31 +116,44 @@ export default function MorningPrompt() {
   const { tasks, leftovers } = state;
   const full = tasks.length >= MAX_TASKS;
   const tomorrow = dateKey(addDays(fromDateKey(state.today.date), 1));
-  const saveTasks = async (next: Task[]) =>
-    setError(await applyCall(api.updateTasks(next)));
+  /** True if it saved. */
+  const saveTasks = async (next: Task[]) => {
+    const failed = await applyCall(api.updateTasks(next));
+    setError(failed);
+    return failed === null;
+  };
 
-  const add = async () => {
+  /** The new task count, or null if nothing was added. */
+  const add = async (): Promise<number | null> => {
     const name = title.trim();
-    if (!name) return;
+    if (!name) return null;
     if (full) {
       setError(
         `${MAX_TASKS} tasks is the most for a day. Put quick jobs in small work.`,
       );
-      return;
+      return null;
     }
     const minutes = estimate.trim() === "" ? 0 : parseDuration(estimate);
     if (minutes === null) {
       setError("Use a time like 45m, 3h or 1h 30m, or leave it empty.");
-      return;
+      return null;
     }
     const next = addTask(tasks, name, "medium", minutes, state.next_id, area);
+    if (!(await saveTasks(next))) return null;
     setTitle("");
     setEstimate("");
-    await saveTasks(next);
+    return next.length;
   };
 
   const start = async () => {
-    if (tasks.length === 0) {
+    // A task typed but not added yet still counts.
+    let count = tasks.length;
+    if (title.trim()) {
+      const added = await add();
+      if (added === null) return;
+      count = added;
+    }
+    if (count === 0) {
       setError(
         "Write at least one task to start your day. Small work doesn't count.",
       );
@@ -191,6 +204,9 @@ export default function MorningPrompt() {
               <CalendarClock size={18} aria-hidden="true" />
               Left from yesterday
             </h2>
+            <p className="text-sm text-neutral">
+              Do each one today, move it to another day, or drop it.
+            </p>
             <ul>
               {leftovers.map((task) => (
                 <Leftover
@@ -214,12 +230,12 @@ export default function MorningPrompt() {
               Today&apos;s tasks
             </h2>
             <span className="text-sm text-neutral">
-              {tasks.length} of {MAX_TASKS}
+              {tasks.length} of {MAX_TASKS} tasks
             </span>
           </div>
           <p className="text-sm text-neutral">
-            The important work that really counts. Quick 5 to 10 minute jobs go
-            in small work.
+            Up to {MAX_TASKS} a day, for the important work that really counts.
+            Quick 5 to 10 minute jobs go in small work.
           </p>
           {tasks.length > 0 && (
             <ul>

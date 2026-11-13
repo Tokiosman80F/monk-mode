@@ -68,6 +68,8 @@ export default function Limits() {
   const [tab, setTab] = useState<Tab>("limits");
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // "Always block" asks first: during a lock it can't be undone.
+  const [confirming, setConfirming] = useState<string | null>(null);
   if (!snapshot) return <PageTitle>Limits</PageTitle>;
 
   const { state } = snapshot;
@@ -189,8 +191,8 @@ export default function Limits() {
                     </p>
                     <progress
                       className={`progress mt-1 block h-1 w-full max-w-48 ${running ? "progress-error" : "progress-secondary"}`}
-                      aria-label={`Time left on ${site.domain}`}
-                      value={left}
+                      aria-label={`Time used on ${site.domain}`}
+                      value={used}
                       max={Math.max(site.daily_min * 60, 1)}
                     />
                   </div>
@@ -215,13 +217,39 @@ export default function Limits() {
                     max={locked ? site.daily_min : MAX_LIMIT_MIN}
                     onSave={(minutes) => void setMinutes(site.domain, minutes)}
                   />
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => void moveToBlocked(site.domain)}
-                  >
-                    <ArrowRight size={16} aria-hidden="true" />
-                    Always block
-                  </button>
+                  {confirming === site.domain ? (
+                    <span className="flex w-full items-center justify-end gap-2 text-sm sm:w-auto">
+                      <span className="text-neutral">
+                        {locked
+                          ? `${tip}. You can't undo this until then.`
+                          : "Block it all day?"}
+                      </span>
+                      <button
+                        className="btn btn-error btn-sm"
+                        aria-label={`Yes, always block ${site.domain}`}
+                        onClick={() => {
+                          setConfirming(null);
+                          void moveToBlocked(site.domain);
+                        }}
+                      >
+                        Always block
+                      </button>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => setConfirming(null)}
+                      >
+                        Cancel
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      className="btn btn-ghost btn-sm font-normal text-neutral"
+                      onClick={() => setConfirming(site.domain)}
+                    >
+                      <ArrowRight size={16} aria-hidden="true" />
+                      Always block
+                    </button>
+                  )}
                   <LockTip tip={tip}>
                     <button
                       className="btn btn-ghost btn-sm"

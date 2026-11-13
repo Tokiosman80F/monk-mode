@@ -1,7 +1,7 @@
 import { Flame } from "lucide-react";
 import { browserName, formatDuration, plannedMin, totalFocusSec } from "../lib";
 import { useStore } from "../store";
-import { DayHeader, LevelBar, PageTitle } from "../ui";
+import { DayHeader, PageTitle } from "../ui";
 import Pomodoro from "./Pomodoro";
 import SmallWork from "./SmallWork";
 import Tasks from "./Tasks";
@@ -20,27 +20,12 @@ export default function Today() {
     <>
       <header className="flex flex-wrap items-center justify-between gap-6">
         <DayHeader />
-        <div className="flex flex-col gap-3">
-          <LevelBar progress={state.progress} />
-          <div className="flex items-center gap-2 text-sm">
-            <Flame
-              size={18}
-              aria-hidden="true"
-              className={streak > 0 ? "text-accent" : "text-neutral"}
-            />
-            <span>
-              {streak} {streak === 1 ? "day" : "days"}
-            </span>
-            {lockDay && (
-              <span className="text-neutral">
-                Day {lockDay.day} of {lockDay.total}
-              </span>
-            )}
-          </div>
+        {/* One progress bar: today's focus. Level and streak are one quiet line. */}
+        <div className="flex w-64 flex-col gap-2">
           <div>
-            <div className="mb-1 flex justify-between gap-4 text-xs text-neutral">
+            <div className="mb-1 flex justify-between gap-4 text-sm">
               <span>Focus today</span>
-              <span>
+              <span className="tabular-nums">
                 {formatDuration(focusSec)} / {formatDuration(targetSec)}
               </span>
             </div>
@@ -54,6 +39,24 @@ export default function Today() {
               {formatDuration(planned * 60)} planned in open tasks
             </p>
           </div>
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral">
+            <span className="flex items-center gap-1">
+              <Flame
+                size={14}
+                aria-hidden="true"
+                className={streak > 0 ? "text-accent" : ""}
+              />
+              {streak}-day streak
+            </span>
+            <a href="#/rewards" className="hover:text-base-content">
+              Level {state.progress.level}
+            </a>
+            {lockDay && (
+              <span>
+                Lock day {lockDay.day} of {lockDay.total}
+              </span>
+            )}
+          </p>
         </div>
       </header>
 

@@ -6,7 +6,15 @@ import { applyCall, useStore } from "../store";
 import { Card, ErrorNote, Logo } from "../ui";
 import { LockWizard } from "./Lock";
 
-const STEPS = ["Welcome", "Service", "Extension", "Your lists", "Lock"];
+// The planner comes after these, on its own screen.
+const STEPS = [
+  "Welcome",
+  "Service",
+  "Extension",
+  "Your lists",
+  "Lock",
+  "Planner",
+];
 
 function Nav({
   back,
@@ -181,7 +189,9 @@ export default function Setup() {
           {STEPS.map((label, i) => (
             <li
               key={label}
-              className={`step ${step >= i ? "step-primary" : ""}`}
+              data-content={step > i ? "✓" : String(i + 1)}
+              aria-current={step === i ? "step" : undefined}
+              className={`step ${step >= i ? "step-primary" : ""} ${step === i ? "font-medium" : "text-neutral"}`}
             >
               {label}
             </li>
@@ -204,16 +214,12 @@ export default function Setup() {
         {step === 3 && <ListsStep back={back} next={next} />}
         {step === 4 && (
           <>
-            <LockWizard onDone={() => void finish()} />
+            <LockWizard
+              onDone={() => void finish()}
+              onBack={back}
+              onSkip={() => void finish()}
+            />
             <ErrorNote message={error} />
-            <div className="flex gap-2">
-              <button className="btn btn-ghost" onClick={back}>
-                Back
-              </button>
-              <button className="btn btn-ghost" onClick={() => void finish()}>
-                Skip for now
-              </button>
-            </div>
           </>
         )}
       </div>

@@ -90,9 +90,8 @@ describe("Today", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("blockquote")).toBeInTheDocument();
     expect(screen.getByLabelText("Finish Ship the page")).toBeInTheDocument();
-    expect(screen.getByLabelText("Level 3")).toBeInTheDocument();
-    expect(screen.getByText("20 / 300 XP")).toBeInTheDocument();
-    expect(screen.getByText("4 days")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Level 3" })).toBeInTheDocument();
+    expect(screen.getByText("4-day streak")).toBeInTheDocument();
     expect(screen.getByText("1h 40m / 11h")).toBeInTheDocument();
     expect(
       screen.getByText("4h 30m planned in open tasks"),
@@ -112,7 +111,7 @@ describe("Today", () => {
       state.lock_day = { day: 12, total: 90 };
     });
     render(<Today />);
-    expect(screen.getByText("Day 12 of 90")).toBeInTheDocument();
+    expect(screen.getByText("Lock day 12 of 90")).toBeInTheDocument();
   });
 
   it("explains a browser without the extension", () => {
@@ -544,10 +543,23 @@ describe("Planner setup", () => {
     fireEvent.change(screen.getByLabelText("Daily study hours"), {
       target: { value: "10.5" },
     });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Remove focus area 3" }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Monday" }));
+    // It starts with one empty area, not someone else's plan.
+    expect(screen.getByLabelText("Focus area 1")).toHaveValue("");
+    expect(screen.queryByLabelText("Focus area 2")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Focus area 1"), {
+      target: { value: "React" },
+    });
+    fireEvent.change(screen.getByLabelText("Hours a day for focus area 1"), {
+      target: { value: "3" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add an area" }));
+    fireEvent.change(screen.getByLabelText("Focus area 2"), {
+      target: { value: "Products" },
+    });
+    fireEvent.change(screen.getByLabelText("Hours a day for focus area 2"), {
+      target: { value: "6" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Saturday" }));
     fireEvent.click(screen.getByRole("button", { name: /Continue/ }));
     await waitFor(() => expect(api.updateSettings).toHaveBeenCalled());
     const saved = savedSettings();
@@ -558,7 +570,7 @@ describe("Planner setup", () => {
         { name: "React", target_min: 180 },
         { name: "Products", target_min: 360 },
       ],
-      week_start: "monday",
+      week_start: "saturday",
     });
   });
 });
@@ -581,6 +593,24 @@ describe("Morning prompt", () => {
       "Write at least one task",
     );
     expect(api.planDay).not.toHaveBeenCalled();
+  });
+
+  it("adds a typed task before starting the day", async () => {
+    unplanned();
+    vi.mocked(api.updateTasks).mockImplementation(async (tasks) => {
+      const next = makeSnapshot();
+      next.state.planned = false;
+      next.state.tasks = tasks;
+      return next;
+    });
+    render(<MorningPrompt />);
+    fireEvent.change(screen.getByLabelText("New task"), {
+      target: { value: "Hooks chapter" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Start my day/ }));
+    await waitFor(() => expect(api.planDay).toHaveBeenCalled());
+    expect(savedTasks()[0].title).toBe("Hooks chapter");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("adds a task with a focus area and an optional estimate", async () => {
@@ -837,9 +867,9 @@ describe("Limits", () => {
     expect(row("youtube.com")).toHaveTextContent("2m used");
     expect(row("reddit.com")).toHaveTextContent("10mleft");
     expect(row("x.com")).toHaveTextContent("Closed");
-    expect(screen.getByLabelText("Time left on youtube.com")).toHaveAttribute(
+    expect(screen.getByLabelText("Time used on youtube.com")).toHaveAttribute(
       "value",
-      "1680",
+      "120",
     );
   });
 
@@ -938,6 +968,14 @@ describe("Limits", () => {
 
     vi.mocked(api.updateSettings).mockClear();
     fireEvent.click(screen.getAllByRole("button", { name: /Always block/ })[0]);
+    // It asks first, and nothing is saved until the second click.
+    expect(api.updateSettings).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(/Block it all day|can't undo this/),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Yes, always block youtube.com" }),
+    );
     await waitFor(() => {
       expect(savedSettings().always_blocked).toContain("youtube.com");
       expect(
@@ -973,22 +1011,37 @@ describe("Limits", () => {
 });
 
 describe("Settings", () => {
-  it("saves edits", async () => {
+  it("saves a field when it's left", async () => {
     setStore();
     render(<FocusSettings />);
-    fireEvent.change(screen.getByLabelText("Focus minutes"), {
-      target: { value: "25" },
-    });
-    fireEvent.change(screen.getByLabelText("Daily focus target (hours)"), {
-      target: { value: "8" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-
+    const focus = screen.getByLabelText("Focus minutes");
+    fireEvent.change(focus, { target: { value: "25" } });
+    expect(api.updateSettings).not.toHaveBeenCalled();
+    fireEvent.blur(focus);
     await waitFor(() => expect(api.updateSettings).toHaveBeenCalled());
-    const saved = savedSettings();
-    expect(saved.pomodoro_focus_min).toBe(25);
-    expect(saved.daily_focus_target_min).toBe(480);
+    expect(savedSettings().pomodoro_focus_min).toBe(25);
     expect(await screen.findByText("Saved.")).toBeInTheDocument();
+  });
+
+  it("puts back a value out of range instead of saving it", () => {
+    setStore();
+    render(<FocusSettings />);
+    const target = screen.getByLabelText("Daily focus target (hours)");
+    fireEvent.change(target, { target: { value: "30" } });
+    fireEvent.blur(target);
+    expect(api.updateSettings).not.toHaveBeenCalled();
+    expect(target).toHaveValue(11);
+  });
+
+  it("edits the planner profile", async () => {
+    setStore();
+    render(<FocusSettings />);
+    fireEvent.change(screen.getByLabelText("Your name"), {
+      target: { value: "Rafi" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save planner" }));
+    await waitFor(() => expect(api.updateSettings).toHaveBeenCalled());
+    expect(savedSettings().profile?.name).toBe("Rafi");
   });
 
   it("doesn't overwrite limits changed elsewhere", async () => {
@@ -998,7 +1051,9 @@ describe("Settings", () => {
       state.settings.allowance_sites = [];
     });
     rerender(<FocusSettings />);
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    const focus = screen.getByLabelText("Focus minutes");
+    fireEvent.change(focus, { target: { value: "30" } });
+    fireEvent.blur(focus);
     await waitFor(() => expect(savedSettings().allowance_sites).toEqual([]));
   });
 });
@@ -1051,7 +1106,7 @@ describe("Lock", () => {
     expect(confirm).toBeEnabled();
   });
 
-  it("starts a 3-month lock by default", async () => {
+  it("starts a 1-week lock by default", async () => {
     setStore();
     const confirm = toPhraseStep();
     fireEvent.change(screen.getByLabelText("Commitment phrase"), {
@@ -1063,8 +1118,8 @@ describe("Lock", () => {
       (new Date(vi.mocked(api.startLock).mock.calls[0][0]).getTime() -
         Date.now()) /
       86_400_000;
-    expect(days).toBeGreaterThan(88);
-    expect(days).toBeLessThan(93);
+    expect(days).toBeGreaterThan(6.9);
+    expect(days).toBeLessThan(7.1);
   });
 
   it("needs a future date for a custom lock", () => {

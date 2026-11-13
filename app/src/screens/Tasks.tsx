@@ -278,7 +278,7 @@ function TaskRow({
           onChange={(title) => onChange({ ...task, title })}
         />
         {task.focus_area && (
-          <span className="badge badge-ghost badge-sm whitespace-nowrap text-neutral">
+          <span className="badge badge-ghost badge-sm hidden whitespace-nowrap text-neutral md:inline-flex">
             {task.focus_area}
           </span>
         )}
@@ -428,7 +428,7 @@ function AddTaskForm({
     >
       <div className="flex flex-wrap items-center gap-2">
         <input
-          className="input input-bordered min-w-52 flex-1"
+          className="input input-bordered min-w-32 flex-1"
           placeholder="Add a task"
           aria-label="New task"
           value={title}
@@ -456,8 +456,8 @@ function AddTaskForm({
           ))}
         </div>
         <input
-          className="input input-bordered w-32"
-          placeholder="Total time"
+          className="input input-bordered w-24"
+          placeholder="Time"
           aria-label="Total time"
           value={time}
           onChange={(e) => setTime(e.target.value)}

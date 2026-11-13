@@ -29,10 +29,22 @@ function endDate(choice: Choice, custom: string, from: Date): Date | null {
   }
 }
 
-/** The 3-step lock wizard. Also the last step of first-run setup. */
-export function LockWizard({ onDone }: { onDone?: () => void }) {
+/**
+ * The 3-step lock wizard. Also a step of first-run setup, which passes `onBack` and `onSkip` so
+ * there's one set of buttons.
+ */
+export function LockWizard({
+  onDone,
+  onBack,
+  onSkip,
+}: {
+  onDone?: () => void;
+  onBack?: () => void;
+  onSkip?: () => void;
+}) {
   const [step, setStep] = useState(1);
-  const [choice, setChoice] = useState<Choice>("three");
+  // Short by default: a first lock should be easy to say yes to.
+  const [choice, setChoice] = useState<Choice>("week");
   const [custom, setCustom] = useState("");
   const [phrase, setPhrase] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -46,15 +58,14 @@ export function LockWizard({ onDone }: { onDone?: () => void }) {
   };
 
   return (
-    <Card title="Start a commitment lock">
-      <ul className="steps">
-        {["Duration", "Rules", "Commit"].map((label, i) => (
-          <li key={label} className={`step ${step > i ? "step-primary" : ""}`}>
-            {label}
-          </li>
-        ))}
-      </ul>
-
+    <Card
+      title="Start a commitment lock"
+      action={
+        <span className="text-sm text-neutral">
+          {step} of 3: {["How long", "The rules", "Commit"][step - 1]}
+        </span>
+      }
+    >
       {step === 1 && (
         <>
           <div className="flex flex-col gap-2">
@@ -80,13 +91,28 @@ export function LockWizard({ onDone }: { onDone?: () => void }) {
               onChange={(e) => setCustom(e.target.value)}
             />
           )}
-          <button
-            className="btn btn-primary w-fit"
-            disabled={!end}
-            onClick={() => setStep(2)}
-          >
-            Next
-          </button>
+          <p className="text-sm text-neutral">
+            Start short. A week is enough to see how it feels.
+          </p>
+          <div className="flex gap-2">
+            {onBack && (
+              <button className="btn btn-ghost" onClick={onBack}>
+                Back
+              </button>
+            )}
+            <button
+              className="btn btn-primary"
+              disabled={!end}
+              onClick={() => setStep(2)}
+            >
+              Next
+            </button>
+            {onSkip && (
+              <button className="btn btn-ghost text-neutral" onClick={onSkip}>
+                Skip for now
+              </button>
+            )}
+          </div>
         </>
       )}
 
