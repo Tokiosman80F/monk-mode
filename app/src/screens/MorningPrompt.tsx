@@ -1,4 +1,4 @@
-import { ArrowRight, CalendarClock, Plus, Target, X } from "lucide-react";
+import { ArrowRight, CalendarClock, Plus, X } from "lucide-react";
 import { useState } from "react";
 import { api } from "../api";
 import {
@@ -181,22 +181,6 @@ export default function MorningPrompt() {
             })}
           </p>
         </header>
-
-        {state.today_target && (
-          <p className="flex items-start gap-3 rounded-box border border-secondary/40 bg-secondary/10 p-4">
-            <Target
-              size={20}
-              aria-hidden="true"
-              className="mt-0.5 shrink-0 text-secondary"
-            />
-            <span>
-              <span className="block text-sm text-neutral">
-                Today in your monthly plan
-              </span>
-              {state.today_target}
-            </span>
-          </p>
-        )}
 
         {leftovers.length > 0 && (
           <section className="flex flex-col gap-1">

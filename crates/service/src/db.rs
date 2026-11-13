@@ -8,10 +8,11 @@ use monk_core::planner::{SmallItem, MAX_TASKS_PER_DAY};
 use rusqlite::{params, Connection, OptionalExtension};
 use thiserror::Error;
 
-const MIGRATIONS: [&str; 3] = [
+const MIGRATIONS: [&str; 4] = [
     include_str!("../migrations/001_init.sql"),
     include_str!("../migrations/002_tasks_and_limits.sql"),
     include_str!("../migrations/003_planner.sql"),
+    include_str!("../migrations/004_remove_unused.sql"),
 ];
 
 #[derive(Debug, Error)]
@@ -116,12 +117,10 @@ impl Db {
     pub fn save_day(&self, day: &UsageDay) -> Result<()> {
         self.conn.execute(
             "INSERT OR REPLACE INTO usage_daily
-                (date, allowance_used_sec, blocked_attempts, focus_sec,
-                 site_used_sec, task_xp, tasks_done)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                (date, blocked_attempts, focus_sec, site_used_sec, task_xp, tasks_done)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 day.date.to_string(),
-                day.allowance_used_sec,
                 day.blocked_attempts,
                 serde_json::to_string(&day.focus_sec)?,
                 serde_json::to_string(&day.site_used_sec)?,
@@ -135,37 +134,26 @@ impl Db {
     /// The most recent `limit` days, oldest first.
     pub fn load_days(&self, limit: u32) -> Result<Vec<UsageDay>> {
         let mut stmt = self.conn.prepare(
-            "SELECT date, allowance_used_sec, blocked_attempts, focus_sec,
-                    site_used_sec, task_xp, tasks_done
+            "SELECT date, blocked_attempts, focus_sec, site_used_sec, task_xp, tasks_done
              FROM usage_daily ORDER BY date DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map([limit], |r| {
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, u32>(1)?,
-                r.get::<_, u32>(2)?,
+                r.get::<_, String>(2)?,
                 r.get::<_, String>(3)?,
-                r.get::<_, String>(4)?,
+                r.get::<_, u32>(4)?,
                 r.get::<_, u32>(5)?,
-                r.get::<_, u32>(6)?,
             ))
         })?;
         let mut days = Vec::new();
         for row in rows {
-            let (
-                date,
-                allowance_used_sec,
-                blocked_attempts,
-                focus_sec,
-                site_used_sec,
-                task_xp,
-                tasks_done,
-            ) = row?;
+            let (date, blocked_attempts, focus_sec, site_used_sec, task_xp, tasks_done) = row?;
             days.push(UsageDay {
                 date: date
                     .parse::<NaiveDate>()
                     .map_err(|_| DbError::BadDate(date.clone()))?,
-                allowance_used_sec,
                 blocked_attempts,
                 focus_sec: serde_json::from_str(&focus_sec)?,
                 site_used_sec: serde_json::from_str(&site_used_sec)?,
@@ -280,22 +268,6 @@ impl Db {
             )
             .optional()?
             .unwrap_or(false))
-    }
-
-    /// The day's row from a saved monthly goal: its target, or "Rest day".
-    pub fn load_target(&self, date: NaiveDate) -> Result<Option<String>> {
-        Ok(self
-            .conn
-            .query_row(
-                "SELECT CASE WHEN d.status = 'rest' THEN 'Rest day' ELSE d.target END
-                 FROM goal_day d JOIN goal g ON g.id = d.goal_id
-                 WHERE g.level = 'month' AND g.locked_at IS NOT NULL AND d.date = ?1
-                   AND (d.target != '' OR d.status = 'rest')
-                 LIMIT 1",
-                [date.to_string()],
-                |r| r.get(0),
-            )
-            .optional()?)
     }
 
     /// Replaces one day's tasks, leaving every other day alone.
@@ -530,40 +502,6 @@ mod tests {
         run(&db, "UPDATE task SET date = '2026-11-12' WHERE id = 5").unwrap();
     }
 
-    #[test]
-    fn the_database_refuses_to_change_a_saved_goal() {
-        let (_dir, db) = temp_db();
-        run(
-            &db,
-            "INSERT INTO goal (id, level, period_start, period_end, title)
-             VALUES (1, 'month', '2026-11-12', '2026-11-30', 'Ship it')",
-        )
-        .unwrap();
-        run(
-            &db,
-            "INSERT INTO goal_day (goal_id, date, target) VALUES (1, '2026-11-12', 'Plan')",
-        )
-        .unwrap();
-        // Still a draft, so it can change.
-        run(&db, "UPDATE goal_day SET target = 'Plan v2'").unwrap();
-        run(&db, "UPDATE goal SET locked_at = '2026-11-11T12:00:00Z'").unwrap();
-
-        for sql in [
-            "UPDATE goal SET title = 'Easier'",
-            "DELETE FROM goal",
-            "UPDATE goal_day SET target = 'Rest'",
-            "DELETE FROM goal_day",
-            "INSERT INTO goal_day (goal_id, date, target) VALUES (1, '2026-11-13', 'x')",
-        ] {
-            assert!(
-                run(&db, sql).unwrap_err().contains("can't be changed"),
-                "{sql}"
-            );
-        }
-        // Marking how the day went is still allowed.
-        run(&db, "UPDATE goal_day SET status = 'done'").unwrap();
-    }
-
     fn stored_task(id: u32, done_on: Option<NaiveDate>) -> Task {
         Task {
             id,
@@ -668,7 +606,7 @@ mod tests {
     }
 
     #[test]
-    fn a_plan_is_recorded_once_and_a_saved_goal_gives_the_day_target() {
+    fn a_plan_is_recorded_once() {
         let (_dir, db) = temp_db();
         assert!(!db.is_planned(date(9)).unwrap());
         db.mark_planned(date(9), t(9)).unwrap();
@@ -679,27 +617,6 @@ mod tests {
             .query_row("SELECT planned_at FROM day_log", [], |r| r.get(0))
             .unwrap();
         assert_eq!(parse_time(&at).unwrap(), t(9));
-
-        db.conn
-            .execute_batch(
-                "INSERT INTO goal (id, level, period_start, period_end, title)
-                 VALUES (1, 'month', '2026-11-09', '2026-11-30', 'Ship');
-                 INSERT INTO goal_day (goal_id, date, target) VALUES (1, '2026-11-09', 'Hooks');
-                 INSERT INTO goal_day (goal_id, date, target, status)
-                     VALUES (1, '2026-11-10', '', 'rest');",
-            )
-            .unwrap();
-        // A draft goal gives nothing.
-        assert_eq!(db.load_target(date(9)).unwrap(), None);
-        db.conn
-            .execute("UPDATE goal SET locked_at = '2026-11-09T00:00:00Z'", [])
-            .unwrap();
-        assert_eq!(db.load_target(date(9)).unwrap().as_deref(), Some("Hooks"));
-        assert_eq!(
-            db.load_target(date(10)).unwrap().as_deref(),
-            Some("Rest day")
-        );
-        assert_eq!(db.load_target(date(11)).unwrap(), None);
     }
 
     #[test]
@@ -722,15 +639,6 @@ mod tests {
         assert_eq!(today[0].carried_from_date, Some(date(9)));
         // The ticked one stays on its own day.
         assert_eq!(db.load_small_items(date(9)).unwrap()[0].id, 2);
-    }
-
-    #[test]
-    fn a_day_gets_one_penalty_at_most() {
-        let (_dir, db) = temp_db();
-        let penalty = "INSERT INTO penalty (date, reason, days_added, created_at)
-                       VALUES ('2026-11-12', 'no_plan', 1, '2026-11-13T00:00:00Z')";
-        run(&db, penalty).unwrap();
-        assert!(run(&db, penalty).is_err());
     }
 
     #[test]
@@ -794,7 +702,6 @@ mod tests {
             db.save_day(&UsageDay::new(date(day))).unwrap();
         }
         let mut updated = UsageDay::new(date(3));
-        updated.allowance_used_sec = 60;
         updated.blocked_attempts = 2;
         updated.focus_sec.insert("React".to_string(), 120);
         updated.site_used_sec.insert("youtube.com".to_string(), 90);

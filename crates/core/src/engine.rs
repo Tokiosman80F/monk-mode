@@ -119,7 +119,6 @@ fn tick_allowance(
         return;
     }
 
-    let mut counted = 0;
     for site in &state.settings.allowance_sites {
         if !url_matches_domain(&tab.url, &site.domain) {
             continue;
@@ -135,7 +134,6 @@ fn tick_allowance(
         }
         let added = elapsed_sec.min(before);
         *used += added;
-        counted = counted.max(added);
         let after = before - added;
 
         if before > WARN_2MIN_SEC && after <= WARN_2MIN_SEC {
@@ -148,7 +146,6 @@ fn tick_allowance(
             events.push(Event::AllowanceUsedUp);
         }
     }
-    state.today.allowance_used_sec += counted;
 }
 
 /// `task_id` of `None` starts a session with no task.
@@ -371,7 +368,7 @@ mod tests {
     fn focused_allowance_site_counts() {
         let mut s = state();
         tick(&mut s, 5, now(), Some(&youtube()));
-        assert_eq!(s.today.allowance_used_sec, 5);
+        assert_eq!(s.today.site_used("youtube.com"), 5);
     }
 
     #[test]
@@ -380,7 +377,7 @@ mod tests {
         for _ in 0..3 {
             tick(&mut s, 2, now(), Some(&youtube()));
         }
-        assert_eq!(s.today.allowance_used_sec, 6);
+        assert_eq!(s.today.site_used("youtube.com"), 6);
     }
 
     #[test]
@@ -397,7 +394,7 @@ mod tests {
         tick(&mut s, 5, now(), Some(&hidden));
         tick(&mut s, 5, now(), Some(&unfocused));
         tick(&mut s, 5, now(), None);
-        assert_eq!(s.today.allowance_used_sec, 0);
+        assert_eq!(s.today.site_used("youtube.com"), 0);
     }
 
     #[test]
@@ -408,14 +405,14 @@ mod tests {
             ..youtube()
         };
         tick(&mut s, 5, now(), Some(&idle));
-        assert_eq!(s.today.allowance_used_sec, 0);
+        assert_eq!(s.today.site_used("youtube.com"), 0);
     }
 
     #[test]
     fn non_allowance_site_does_not_count() {
         let mut s = state();
         tick(&mut s, 5, now(), Some(&tab("https://react.dev/learn")));
-        assert_eq!(s.today.allowance_used_sec, 0);
+        assert_eq!(s.today.site_used("youtube.com"), 0);
     }
 
     #[test]
@@ -423,11 +420,11 @@ mod tests {
         let mut s = state();
         start_pomodoro(&mut s, None, now()).unwrap();
         tick(&mut s, 5, now(), Some(&youtube()));
-        assert_eq!(s.today.allowance_used_sec, 0);
+        assert_eq!(s.today.site_used("youtube.com"), 0);
 
         s.pomodoro = PomodoroState::Break { remaining_sec: 60 };
         tick(&mut s, 5, now(), Some(&youtube()));
-        assert_eq!(s.today.allowance_used_sec, 5);
+        assert_eq!(s.today.site_used("youtube.com"), 5);
     }
 
     #[test]
@@ -452,9 +449,9 @@ mod tests {
             events,
             [Event::Warn2Min, Event::Warn30s, Event::AllowanceUsedUp]
         );
-        assert_eq!(s.today.allowance_used_sec, 600);
+        assert_eq!(s.today.site_used("youtube.com"), 600);
         assert!(tick(&mut s, 5, now(), Some(&youtube())).is_empty());
-        assert_eq!(s.today.allowance_used_sec, 600);
+        assert_eq!(s.today.site_used("youtube.com"), 600);
     }
 
     // Day rollover
@@ -467,7 +464,7 @@ mod tests {
         assert!(tick(&mut s, 1, at(2026, 11, 6, 0), None).is_empty());
         assert!(tick(&mut s, 1, at(2026, 11, 6, 5), None).is_empty());
         let events = tick(&mut s, 1, at(2026, 11, 6, 6), None);
-        assert!(matches!(&events[..], [Event::DayRolled(d)] if d.allowance_used_sec == 600));
+        assert!(matches!(&events[..], [Event::DayRolled(d)] if d.site_used("youtube.com") == 600));
         assert_eq!(s.today, UsageDay::new(date(2026, 11, 6)));
         assert_eq!(s.history.len(), 1);
         assert_eq!(s.history[0].date, date(2026, 11, 5));
@@ -499,7 +496,7 @@ mod tests {
         let mut s = state();
         tick(&mut s, 600, now(), Some(&youtube()));
         assert!(tick(&mut s, 1, at(2026, 11, 4, 23), None).is_empty());
-        assert_eq!(s.today.allowance_used_sec, 600);
+        assert_eq!(s.today.site_used("youtube.com"), 600);
     }
 
     // Pomodoro
@@ -666,7 +663,7 @@ mod tests {
         assert_eq!(s.today.site_used("youtube.com"), 600);
         assert_eq!(s.today.site_used("music.youtube.com"), 600);
         // One tab, so the day total only counts it once.
-        assert_eq!(s.today.allowance_used_sec, 600);
+        assert_eq!(s.today.site_used("youtube.com"), 600);
 
         let set = compute_blocked(&s, now(), true);
         assert!(has(&set, "youtube.com"));

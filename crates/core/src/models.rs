@@ -173,7 +173,6 @@ impl Lock {
 #[ts(export)]
 pub struct UsageDay {
     pub date: NaiveDate,
-    pub allowance_used_sec: u32,
     pub blocked_attempts: u32,
     /// Focus seconds per task title.
     pub focus_sec: BTreeMap<String, u32>,
@@ -188,7 +187,6 @@ impl UsageDay {
     pub fn new(date: NaiveDate) -> Self {
         Self {
             date,
-            allowance_used_sec: 0,
             blocked_attempts: 0,
             focus_sec: BTreeMap::new(),
             site_used_sec: BTreeMap::new(),
@@ -269,8 +267,6 @@ pub struct State {
     pub planned: bool,
     /// Yesterday's unfinished tasks, for the morning prompt to carry, move or drop.
     pub leftovers: Vec<Task>,
-    /// Today's row from the saved monthly goal, if there is one.
-    pub today_target: Option<String>,
     pub progress: Progress,
     /// Past days, oldest first. Kept off the wire: `state_changed` goes out every second.
     #[serde(skip)]
@@ -292,7 +288,6 @@ impl State {
             next_id: 1,
             planned: false,
             leftovers: Vec::new(),
-            today_target: None,
             progress: Progress::default(),
             history: Vec::new(),
         }

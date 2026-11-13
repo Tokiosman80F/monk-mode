@@ -28,8 +28,4 @@ planned: boolean,
 /**
  * Yesterday's unfinished tasks, for the morning prompt to carry, move or drop.
  */
-leftovers: Array<Task>, 
-/**
- * Today's row from the saved monthly goal, if there is one.
- */
-today_target: string | null, progress: Progress, };
+leftovers: Array<Task>, progress: Progress, };

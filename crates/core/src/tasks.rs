@@ -222,7 +222,6 @@ pub fn plan_day(state: &mut State) -> Result<(), TaskError> {
 pub fn start_day(state: &mut State, today: NaiveDate) {
     state.leftovers = state.tasks.iter().filter(|t| !t.done).cloned().collect();
     state.planned = false;
-    state.today_target = None;
     state.tasks.clear();
     state.small_items.retain(|item| !item.done);
     for item in &mut state.small_items {

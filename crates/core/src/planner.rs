@@ -1,7 +1,7 @@
-//! The planner: monthly and weekly goals, daily tasks, small work and penalties. Dates are app
-//! days, see `models::app_day`.
+//! The planner: the profile, daily tasks and small work. Dates are app days, see
+//! `models::app_day`.
 
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -10,21 +10,11 @@ pub const MAX_TASKS_PER_DAY: usize = 4;
 const MAX_FOCUS_AREAS: usize = 6;
 const MAX_NAME_CHARS: usize = 60;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "snake_case")]
-#[ts(export)]
-pub enum WeekStart {
-    Saturday,
-    Sunday,
-    Monday,
-}
-
-/// Something the user works on, with the hours a day they aim to give it.
+/// Something the user works on, like `React`. Tasks are labelled with one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct FocusArea {
     pub name: String,
-    pub target_min: u32,
 }
 
 /// From the one-time setup. The daily study hours are the existing daily focus target.
@@ -33,7 +23,6 @@ pub struct FocusArea {
 pub struct Profile {
     pub name: String,
     pub focus_areas: Vec<FocusArea>,
-    pub week_start: WeekStart,
 }
 
 impl Profile {
@@ -57,12 +46,6 @@ impl Profile {
             if !seen.insert(area.name.trim().to_lowercase()) {
                 return Err(format!("{} is on the list twice.", area.name));
             }
-            if area.target_min > 24 * 60 {
-                return Err(format!(
-                    "{} can't have more than 24 hours a day.",
-                    area.name
-                ));
-            }
         }
         Ok(())
     }
@@ -81,47 +64,6 @@ pub enum LeftoverAction {
     Drop,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "snake_case")]
-#[ts(export)]
-pub enum GoalLevel {
-    Month,
-    Week,
-}
-
-/// Can't be changed once `locked_at` is set.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct Goal {
-    pub id: u32,
-    pub level: GoalLevel,
-    pub period_start: NaiveDate,
-    pub period_end: NaiveDate,
-    pub title: String,
-    pub locked_at: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "snake_case")]
-#[ts(export)]
-pub enum DayStatus {
-    Planned,
-    Done,
-    Partial,
-    Missed,
-    Rest,
-}
-
-/// One day's target in a goal. The target is fixed with the goal; the status is filled in later.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct GoalDay {
-    pub goal_id: u32,
-    pub date: NaiveDate,
-    pub target: String,
-    pub status: DayStatus,
-}
-
 /// A quick 5 to 10 minute job. Not a task: no limit, and it never counts as a plan.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -133,47 +75,17 @@ pub struct SmallItem {
     pub carried_from_date: Option<NaiveDate>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct DayLog {
-    pub date: NaiveDate,
-    /// When the first task was written.
-    pub planned_at: Option<DateTime<Utc>>,
-    pub checkin_note: Option<String>,
-    pub completion_pct: Option<u8>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "snake_case")]
-#[ts(export)]
-pub enum PenaltyReason {
-    NoPlan,
-}
-
-/// One per day at most, so a missed day is never charged twice.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct Penalty {
-    pub date: NaiveDate,
-    pub reason: PenaltyReason,
-    pub days_added: u32,
-    pub lock_end_before: Option<DateTime<Utc>>,
-    pub lock_end_after: Option<DateTime<Utc>>,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn profile() -> Profile {
-        let area = |name: &str, hours: u32| FocusArea {
+        let area = |name: &str| FocusArea {
             name: name.to_string(),
-            target_min: hours * 60,
         };
         Profile {
             name: "Tokiosman".to_string(),
-            focus_areas: vec![area("React", 3), area("Products", 6), area("LinkedIn", 2)],
-            week_start: WeekStart::Saturday,
+            focus_areas: vec![area("React"), area("Products"), area("LinkedIn")],
         }
     }
 
@@ -189,8 +101,5 @@ mod tests {
         let mut p = profile();
         p.focus_areas[1].name = "react".to_string();
         assert!(p.validate().unwrap_err().contains("twice"));
-        let mut p = profile();
-        p.focus_areas[0].target_min = 25 * 60;
-        assert!(p.validate().is_err());
     }
 }

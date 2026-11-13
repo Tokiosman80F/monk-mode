@@ -120,8 +120,8 @@ pub struct Daemon<P: Platform> {
     open_app: bool,
 }
 
-/// What the morning prompt needs for `today`: whether it's planned, yesterday's unfinished
-/// tasks, and the monthly goal's target.
+/// What the morning prompt needs for `today`: whether it's planned, and yesterday's unfinished
+/// tasks.
 fn load_morning(db: &Db, state: &mut State, today: chrono::NaiveDate) {
     state.planned = db.is_planned(today).unwrap_or_else(|e| {
         error!("Couldn't read the day log: {e}");
@@ -131,10 +131,6 @@ fn load_morning(db: &Db, state: &mut State, today: chrono::NaiveDate) {
     state.leftovers = db.load_open_tasks(yesterday).unwrap_or_else(|e| {
         error!("Couldn't read yesterday's tasks: {e}");
         Vec::new()
-    });
-    state.today_target = db.load_target(today).unwrap_or_else(|e| {
-        error!("Couldn't read today's target: {e}");
-        None
     });
 }
 
@@ -668,7 +664,7 @@ pub mod tests {
         }
 
         fn used(&self) -> u32 {
-            self.daemon.state().today.allowance_used_sec
+            self.daemon.state().today.site_used("youtube.com")
         }
 
         fn task(&mut self, title: &str) -> Option<u32> {
@@ -810,7 +806,7 @@ pub mod tests {
         rig.restart();
         let history = &rig.daemon.state().history;
         assert_eq!(history.len(), 1);
-        assert_eq!(history[0].allowance_used_sec, 2);
+        assert_eq!(history[0].site_used("youtube.com"), 2);
     }
 
     #[test]

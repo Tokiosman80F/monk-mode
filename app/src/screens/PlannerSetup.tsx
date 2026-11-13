@@ -2,16 +2,8 @@ import { Plus, X } from "lucide-react";
 import { useState } from "react";
 import { api } from "../api";
 import { applyCall, useStore } from "../store";
-import type { FocusArea } from "../types/FocusArea";
 import type { Profile } from "../types/Profile";
-import type { WeekStart } from "../types/WeekStart";
 import { ErrorNote, Logo } from "../ui";
-
-const WEEK_STARTS: [WeekStart, string][] = [
-  ["saturday", "Saturday"],
-  ["sunday", "Sunday"],
-  ["monday", "Monday"],
-];
 
 /** Hours as typed, like `2.5`, to whole minutes. Null when it isn't a number of hours in a day. */
 function hoursToMin(text: string): number | null {
@@ -21,18 +13,8 @@ function hoursToMin(text: string): number | null {
   return Math.round(hours * 60);
 }
 
-interface AreaDraft {
-  name: string;
-  hours: string;
-}
-
-const toDraft = (a: FocusArea): AreaDraft => ({
-  name: a.name,
-  hours: String(a.target_min / 60),
-});
-
 /**
- * The planner profile: name, focus areas and week start, plus the daily study hours when
+ * The planner profile: name and focus areas, plus the daily study hours when
  * `studyMin` is given. Used by the one-time setup and by Settings.
  */
 export function ProfileForm({
@@ -50,20 +32,15 @@ export function ProfileForm({
   const [studyHours, setStudyHours] = useState(
     studyMin === undefined ? "" : String(studyMin / 60),
   );
-  const [areas, setAreas] = useState<AreaDraft[]>(
-    profile?.focus_areas.length
-      ? profile.focus_areas.map(toDraft)
-      : [{ name: "", hours: "" }],
-  );
-  const [weekStart, setWeekStart] = useState<WeekStart>(
-    profile?.week_start ?? "monday",
+  const [areas, setAreas] = useState<string[]>(
+    profile?.focus_areas.length ? profile.focus_areas.map((a) => a.name) : [""],
   );
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  const setArea = (index: number, change: Partial<AreaDraft>) => {
+  const setArea = (index: number, value: string) => {
     setSaved(false);
-    setAreas(areas.map((a, i) => (i === index ? { ...a, ...change } : a)));
+    setAreas(areas.map((a, i) => (i === index ? value : a)));
   };
 
   const save = async () => {
@@ -75,17 +52,10 @@ export function ProfileForm({
       if (study === null)
         return setError("Daily study hours must be between 0 and 24.");
     }
-    const named = areas.filter((a) => a.name.trim());
+    const named = areas.map((a) => a.trim()).filter(Boolean);
     if (named.length === 0) return setError("Add at least one focus area.");
-    const focusAreas: FocusArea[] = [];
-    for (const area of named) {
-      const target = hoursToMin(area.hours);
-      if (target === null)
-        return setError(`Hours for ${area.name} must be between 0 and 24.`);
-      focusAreas.push({ name: area.name.trim(), target_min: target });
-    }
     const failure = await onSave(
-      { name: name.trim(), focus_areas: focusAreas, week_start: weekStart },
+      { name: name.trim(), focus_areas: named.map((n) => ({ name: n })) },
       study,
     );
     setError(failure);
@@ -133,9 +103,10 @@ export function ProfileForm({
       )}
 
       <fieldset className="flex flex-col gap-2">
-        <legend className="mb-1.5 text-sm font-medium">
-          Focus areas and hours a day
-        </legend>
+        <legend className="mb-1.5 text-sm font-medium">Focus areas</legend>
+        <p className="-mt-1 text-sm text-neutral">
+          What you work on, like React or Marketing. Each task gets one.
+        </p>
         {areas.map((area, i) => (
           <div key={i} className="flex items-center gap-2">
             <input
@@ -143,18 +114,9 @@ export function ProfileForm({
               aria-label={`Focus area ${i + 1}`}
               placeholder={i === 0 ? "React" : "Another area"}
               maxLength={60}
-              value={area.name}
-              onChange={(e) => setArea(i, { name: e.target.value })}
+              value={area}
+              onChange={(e) => setArea(i, e.target.value)}
             />
-            <input
-              className="input input-sm input-bordered w-20"
-              aria-label={`Hours a day for focus area ${i + 1}`}
-              inputMode="decimal"
-              placeholder="2"
-              value={area.hours}
-              onChange={(e) => setArea(i, { hours: e.target.value })}
-            />
-            <span className="text-sm text-neutral">h</span>
             <button
               type="button"
               className="btn btn-ghost btn-xs px-1"
@@ -169,34 +131,12 @@ export function ProfileForm({
           <button
             type="button"
             className="btn btn-ghost btn-sm self-start"
-            onClick={() => setAreas([...areas, { name: "", hours: "" }])}
+            onClick={() => setAreas([...areas, ""])}
           >
             <Plus size={16} aria-hidden="true" />
             Add an area
           </button>
         )}
-      </fieldset>
-
-      <fieldset className="flex flex-col gap-2">
-        <legend className="mb-1.5 text-sm font-medium">
-          Your week starts on
-        </legend>
-        <div className="flex gap-2">
-          {WEEK_STARTS.map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={weekStart === value}
-              className={`btn btn-sm ${weekStart === value ? "btn-secondary" : "btn-ghost border-base-300"}`}
-              onClick={() => {
-                setSaved(false);
-                setWeekStart(value);
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
       </fieldset>
 
       <ErrorNote message={error} />

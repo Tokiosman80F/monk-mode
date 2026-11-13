@@ -18,17 +18,12 @@ export function makeSnapshot(): Snapshot {
         daily_focus_target_min: 660,
         profile: {
           name: "Sam",
-          focus_areas: [
-            { name: "React", target_min: 180 },
-            { name: "Products", target_min: 360 },
-          ],
-          week_start: "saturday",
+          focus_areas: [{ name: "React" }, { name: "Products" }],
         },
       },
       lock: null,
       today: {
         date: "2026-11-05",
-        allowance_used_sec: 120,
         blocked_attempts: 0,
         focus_sec: { "Learn hooks": 3600, React: 2400 },
         site_used_sec: { "youtube.com": 120 },
@@ -77,7 +72,6 @@ export function makeSnapshot(): Snapshot {
       next_id: 4,
       planned: true,
       leftovers: [],
-      today_target: null,
       progress: {
         xp: 320,
         today_xp: 100,

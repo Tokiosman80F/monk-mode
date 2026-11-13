@@ -549,28 +549,17 @@ describe("Planner setup", () => {
     fireEvent.change(screen.getByLabelText("Focus area 1"), {
       target: { value: "React" },
     });
-    fireEvent.change(screen.getByLabelText("Hours a day for focus area 1"), {
-      target: { value: "3" },
-    });
     fireEvent.click(screen.getByRole("button", { name: "Add an area" }));
     fireEvent.change(screen.getByLabelText("Focus area 2"), {
       target: { value: "Products" },
     });
-    fireEvent.change(screen.getByLabelText("Hours a day for focus area 2"), {
-      target: { value: "6" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Saturday" }));
     fireEvent.click(screen.getByRole("button", { name: /Continue/ }));
     await waitFor(() => expect(api.updateSettings).toHaveBeenCalled());
     const saved = savedSettings();
     expect(saved.daily_focus_target_min).toBe(630);
     expect(saved.profile).toEqual({
       name: "Sam",
-      focus_areas: [
-        { name: "React", target_min: 180 },
-        { name: "Products", target_min: 360 },
-      ],
-      week_start: "saturday",
+      focus_areas: [{ name: "React" }, { name: "Products" }],
     });
   });
 });
@@ -653,9 +642,8 @@ describe("Morning prompt", () => {
     expect(screen.getByRole("status")).toHaveTextContent("4 tasks");
   });
 
-  it("shows today's target and offers yesterday's unfinished tasks", async () => {
+  it("offers yesterday's unfinished tasks", async () => {
     unplanned((state) => {
-      state.today_target = "Finish the hooks chapter";
       state.leftovers = [
         {
           id: 9,
@@ -675,7 +663,6 @@ describe("Morning prompt", () => {
       async () => useStore.getState().snapshot!,
     );
     render(<MorningPrompt />);
-    expect(screen.getByText("Finish the hooks chapter")).toBeInTheDocument();
     fireEvent.click(
       screen.getByRole("button", { name: "Carry Recipe app to today" }),
     );

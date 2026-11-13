@@ -246,7 +246,6 @@ describe("fillDays", () => {
     const days = [
       {
         date: "2026-11-04",
-        allowance_used_sec: 0,
         blocked_attempts: 0,
         focus_sec: { React: 60, Building: 40 },
         site_used_sec: {},
