@@ -23,6 +23,12 @@ pub enum TaskError {
     DuplicateId,
     #[error("A task can't be given more than 24 hours.")]
     TooMuchTime,
+    #[error("Give {0} a total time before setting when it starts.")]
+    BlockNeedsTime(String),
+    #[error("{0} would run past 6 AM, when the next day starts.")]
+    PastDayEnd(String),
+    #[error("{0} and {1} overlap. Move one of them.")]
+    Overlap(String, String),
     #[error("A day can have at most {MAX_TASKS_PER_DAY} tasks. Put quick jobs in small work.")]
     TooManyTasks,
     #[error("A focus area name must be {MAX_TITLE_CHARS} characters or less.")]
@@ -95,7 +101,43 @@ fn validate(tasks: &[Task]) -> Result<(), TaskError> {
             }
         }
     }
+    check_blocks(tasks)
+}
+
+/// Time blocks need a length, must end by the next day's start, and can't overlap.
+fn check_blocks(tasks: &[Task]) -> Result<(), TaskError> {
+    let mut blocks = Vec::new();
+    for task in tasks {
+        let Some(start) = task.start_min else {
+            continue;
+        };
+        if task.allocated_min == 0 {
+            return Err(TaskError::BlockNeedsTime(task.title.clone()));
+        }
+        if start + task.allocated_min > MINUTES_PER_DAY {
+            return Err(TaskError::PastDayEnd(task.title.clone()));
+        }
+        blocks.push((start, start + task.allocated_min, &task.title));
+    }
+    blocks.sort();
+    for pair in blocks.windows(2) {
+        if pair[0].1 > pair[1].0 {
+            return Err(TaskError::Overlap(pair[0].2.clone(), pair[1].2.clone()));
+        }
+    }
     Ok(())
+}
+
+/// The open task whose time block covers `day_minute`.
+pub fn block_at(tasks: &[Task], day_minute: u32) -> Option<u32> {
+    tasks
+        .iter()
+        .filter(|t| !t.done)
+        .find(|t| {
+            t.start_min
+                .is_some_and(|s| s <= day_minute && day_minute < s + t.allocated_min)
+        })
+        .map(|t| t.id)
 }
 
 /// Replaces the task list and settles today's XP. Removing a task keeps what it earned, which is
@@ -199,6 +241,8 @@ pub fn resolve_leftover(
         _ => {}
     }
     let mut task = state.leftovers.remove(index);
+    // A time belongs to the day it was planned for.
+    task.start_min = None;
     task.carried_from_date
         .get_or_insert(today.pred_opt().unwrap_or(today));
     if action == LeftoverAction::Carry {
@@ -263,6 +307,7 @@ mod tests {
             subtasks: vec![],
             focus_area: None,
             carried_from_date: None,
+            start_min: None,
         }
     }
 
@@ -340,6 +385,48 @@ mod tests {
         t.done_on = Some(date(1));
         apply(&mut s, vec![t]).unwrap();
         assert_eq!(s.tasks[0].done_on, Some(date(5)));
+    }
+
+    fn block(id: u32, start: u32, minutes: u32) -> Task {
+        Task {
+            start_min: Some(start),
+            allocated_min: minutes,
+            ..task(id, Priority::Medium, false)
+        }
+    }
+
+    #[test]
+    fn blocks_need_a_length_end_by_six_and_cannot_overlap() {
+        let mut s = State::new(date(5));
+        // 08:00 to 12:00, then 12:00 to 13:00: touching is fine.
+        apply(&mut s, vec![block(1, 120, 240), block(2, 360, 60)]).unwrap();
+        assert_eq!(
+            apply(&mut s, vec![block(1, 120, 240), block(2, 300, 60)]),
+            Err(TaskError::Overlap(
+                "Task 1".to_string(),
+                "Task 2".to_string()
+            ))
+        );
+        assert_eq!(
+            apply(&mut s, vec![block(1, 120, 0)]),
+            Err(TaskError::BlockNeedsTime("Task 1".to_string()))
+        );
+        assert_eq!(
+            apply(&mut s, vec![block(1, 1400, 60)]),
+            Err(TaskError::PastDayEnd("Task 1".to_string()))
+        );
+        apply(&mut s, vec![block(1, 1380, 60)]).unwrap();
+    }
+
+    #[test]
+    fn the_current_block_is_the_open_task_covering_the_minute() {
+        let mut done = block(2, 360, 60);
+        done.done = true;
+        let tasks = [block(1, 120, 240), done];
+        assert_eq!(block_at(&tasks, 119), None);
+        assert_eq!(block_at(&tasks, 120), Some(1));
+        assert_eq!(block_at(&tasks, 359), Some(1));
+        assert_eq!(block_at(&tasks, 360), None);
     }
 
     #[test]

@@ -18,4 +18,9 @@ focus_area: string | null,
 /**
  * Set by the service when an unfinished task moves to a later day.
  */
-carried_from_date: string | null, };
+carried_from_date: string | null, 
+/**
+ * When its time block starts, in minutes after the day starts at 06:00. The block runs for
+ * `allocated_min`. None for a task with no set time.
+ */
+start_min: number | null, };

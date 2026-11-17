@@ -1,10 +1,85 @@
 import { Flame } from "lucide-react";
-import { browserName, formatDuration, plannedMin, totalFocusSec } from "../lib";
+import {
+  browserName,
+  dayMinute,
+  formatDuration,
+  formatStart,
+  plannedMin,
+  totalFocusSec,
+} from "../lib";
+import type { Task } from "../types/Task";
 import { useStore } from "../store";
 import { DayHeader, PageTitle } from "../ui";
 import Pomodoro from "./Pomodoro";
 import SmallWork from "./SmallWork";
 import Tasks from "./Tasks";
+
+/** Today's time blocks on one strip, with a line for now. Hidden until a task has a time. */
+function Timeline({
+  tasks,
+  current,
+}: {
+  tasks: Task[];
+  current: number | null;
+}) {
+  const blocks = tasks.filter((t) => t.start_min !== null);
+  if (blocks.length === 0) return null;
+  const now = dayMinute();
+  const starts = blocks.map((t) => t.start_min ?? 0);
+  const ends = blocks.map((t) => (t.start_min ?? 0) + t.allocated_min);
+  // Whole hours around the blocks and now, at least six hours wide.
+  const from = Math.floor(Math.min(now, ...starts) / 60) * 60;
+  const to = Math.max(Math.ceil(Math.max(now, ...ends) / 60) * 60, from + 360);
+  const at = (minute: number) => `${((minute - from) / (to - from)) * 100}%`;
+  const hours = Math.round((to - from) / 60);
+  const step = hours > 12 ? 3 : hours > 6 ? 2 : 1;
+  const marks = Array.from(
+    { length: Math.floor(hours / step) + 1 },
+    (_, i) => from + i * step * 60,
+  );
+
+  return (
+    <section aria-label="Today's time blocks" className="flex flex-col gap-1">
+      <div className="relative h-9 rounded-btn bg-base-200">
+        {blocks.map((task) => (
+          <div
+            key={task.id}
+            title={`${task.title}: ${formatStart(task.start_min ?? 0)} – ${formatStart((task.start_min ?? 0) + task.allocated_min)}`}
+            className={`absolute inset-y-1 truncate rounded px-2 text-xs leading-7 ${
+              task.done
+                ? "bg-base-300 text-neutral line-through"
+                : task.id === current
+                  ? "bg-secondary font-medium text-secondary-content"
+                  : "bg-base-300 text-base-content"
+            }`}
+            style={{
+              left: at(task.start_min ?? 0),
+              width: `calc(${at((task.start_min ?? 0) + task.allocated_min)} - ${at(task.start_min ?? 0)} - 2px)`,
+            }}
+          >
+            {task.title}
+          </div>
+        ))}
+        <div
+          aria-hidden="true"
+          className="absolute inset-y-0 w-0.5 bg-accent"
+          style={{ left: at(now) }}
+        />
+      </div>
+      <div className="relative h-4 text-[11px] text-neutral">
+        {marks.map((minute) => (
+          <span
+            key={minute}
+            className="absolute -translate-x-1/2 first:translate-x-0 last:-translate-x-full"
+            style={{ left: at(minute) }}
+          >
+            {formatStart(minute).replace(":00", "")}
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 export default function Today() {
   const snapshot = useStore((s) => s.snapshot);
@@ -68,6 +143,7 @@ export default function Today() {
         </p>
       )}
 
+      <Timeline tasks={state.tasks} current={state.current_block} />
       <Pomodoro />
       <Tasks />
       <SmallWork />

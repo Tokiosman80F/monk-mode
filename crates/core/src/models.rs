@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use chrono::{DateTime, Duration, NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, Duration, NaiveDate, TimeZone, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -32,6 +32,9 @@ pub struct Settings {
     /// Filled in by the planner's one-time setup. Settings saved before it have none.
     #[serde(default)]
     pub profile: Option<Profile>,
+    /// Start a focus session by itself when a task's time block begins.
+    #[serde(default)]
+    pub strict_blocks: bool,
 }
 
 impl Default for Settings {
@@ -61,6 +64,7 @@ impl Default for Settings {
             pomodoro_break_min: 10,
             daily_focus_target_min: 11 * 60,
             profile: None,
+            strict_blocks: false,
         }
     }
 }
@@ -127,6 +131,10 @@ pub struct Task {
     /// Set by the service when an unfinished task moves to a later day.
     #[serde(default)]
     pub carried_from_date: Option<NaiveDate>,
+    /// When its time block starts, in minutes after the day starts at 06:00. The block runs for
+    /// `allocated_min`. None for a task with no set time.
+    #[serde(default)]
+    pub start_min: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -268,6 +276,13 @@ pub struct State {
     /// Yesterday's unfinished tasks, for the morning prompt to carry, move or drop.
     pub leftovers: Vec<Task>,
     pub progress: Progress,
+    /// The open task whose time block is running now, worked out every second.
+    #[serde(default)]
+    pub current_block: Option<u32>,
+    /// A block whose focus session was stopped by hand, so strict mode leaves it alone.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub skipped_block: Option<u32>,
     /// Past days, oldest first. Kept off the wire: `state_changed` goes out every second.
     #[serde(skip)]
     #[ts(skip)]
@@ -289,6 +304,8 @@ impl State {
             planned: false,
             leftovers: Vec::new(),
             progress: Progress::default(),
+            current_block: None,
+            skipped_block: None,
             history: Vec::new(),
         }
     }
@@ -307,13 +324,17 @@ pub fn app_day<Tz: TimeZone>(utc: DateTime<Utc>, tz: &Tz) -> NaiveDate {
 pub struct Now {
     pub utc: DateTime<Utc>,
     pub app_day: NaiveDate,
+    /// Minutes since the app day started at 06:00 local time, 0 to 1439.
+    pub day_minute: u32,
 }
 
 impl Now {
     pub fn new<Tz: TimeZone>(utc: DateTime<Utc>, tz: &Tz) -> Self {
+        let since_start = utc.with_timezone(tz).naive_local() - Duration::hours(DAY_START_HOUR);
         Self {
             utc,
-            app_day: app_day(utc, tz),
+            app_day: since_start.date(),
+            day_minute: since_start.hour() * 60 + since_start.minute(),
         }
     }
 }
@@ -321,6 +342,14 @@ impl Now {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_day_minute_counts_from_six() {
+        let utc = |h, m| Utc.with_ymd_and_hms(2026, 11, 5, h, m, 0).unwrap();
+        assert_eq!(Now::new(utc(6, 0), &Utc).day_minute, 0);
+        assert_eq!(Now::new(utc(8, 30), &Utc).day_minute, 150);
+        assert_eq!(Now::new(utc(5, 59), &Utc).day_minute, 1439);
+    }
 
     #[test]
     fn the_day_runs_from_six_to_five_fifty_nine() {

@@ -21,6 +21,8 @@ pub enum LooseningError {
     RaisedAllowance(String),
     #[error("The Shorts and Reels blocker can't be turned off while locked.")]
     ShortsBlockerDisabled,
+    #[error("Strict time blocks can't be turned off while locked.")]
+    StrictBlocksDisabled,
     #[error("The lock can't be shortened.")]
     ShortenedLock,
 }
@@ -109,6 +111,9 @@ pub fn validate_change(
     }
     if old.shorts_blocker_enabled && !new.shorts_blocker_enabled {
         return Err(LooseningError::ShortsBlockerDisabled);
+    }
+    if old.strict_blocks && !new.strict_blocks {
+        return Err(LooseningError::StrictBlocksDisabled);
     }
     Ok(())
 }
@@ -279,6 +284,21 @@ mod tests {
         assert_eq!(
             check(|s| set_limit(s, "youtube.com", 31)),
             Err(LooseningError::RaisedAllowance("youtube.com".to_string()))
+        );
+    }
+
+    #[test]
+    fn may_turn_on_strict_blocks_but_not_off() {
+        assert_eq!(check(|s| s.strict_blocks = true), Ok(()));
+        let on = Settings {
+            strict_blocks: true,
+            ..Settings::default()
+        };
+        let mut off = on.clone();
+        off.strict_blocks = false;
+        assert_eq!(
+            validate_change(&on, &off, Some(&locked()), t0()),
+            Err(LooseningError::StrictBlocksDisabled)
         );
     }
 

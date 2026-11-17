@@ -8,11 +8,12 @@ use monk_core::planner::{SmallItem, MAX_TASKS_PER_DAY};
 use rusqlite::{params, Connection, OptionalExtension};
 use thiserror::Error;
 
-const MIGRATIONS: [&str; 4] = [
+const MIGRATIONS: [&str; 5] = [
     include_str!("../migrations/001_init.sql"),
     include_str!("../migrations/002_tasks_and_limits.sql"),
     include_str!("../migrations/003_planner.sql"),
     include_str!("../migrations/004_remove_unused.sql"),
+    include_str!("../migrations/005_time_blocks.sql"),
 ];
 
 #[derive(Debug, Error)]
@@ -196,7 +197,7 @@ impl Db {
     fn query_tasks(&self, date: NaiveDate, filter: &str) -> Result<Vec<Task>> {
         let mut stmt = self.conn.prepare(&format!(
             "SELECT id, title, priority, status, done_at, estimate_min, subtasks, focus_area,
-                    carried_from_date
+                    carried_from_date, start_min
              FROM task WHERE date = ?1 AND {filter} ORDER BY id"
         ))?;
         let rows = stmt.query_map([date.to_string()], |r| {
@@ -210,12 +211,23 @@ impl Db {
                 r.get::<_, String>(6)?,
                 r.get::<_, Option<String>>(7)?,
                 r.get::<_, Option<String>>(8)?,
+                r.get::<_, Option<u32>>(9)?,
             ))
         })?;
         let mut tasks = Vec::new();
         for row in rows {
-            let (id, title, priority, status, done_at, estimate_min, subtasks, focus_area, carried) =
-                row?;
+            let (
+                id,
+                title,
+                priority,
+                status,
+                done_at,
+                estimate_min,
+                subtasks,
+                focus_area,
+                carried,
+                start_min,
+            ) = row?;
             tasks.push(Task {
                 id,
                 title,
@@ -226,6 +238,7 @@ impl Db {
                 subtasks: serde_json::from_str(&subtasks)?,
                 focus_area,
                 carried_from_date: carried.as_deref().map(parse_date).transpose()?,
+                start_min,
             });
         }
         Ok(tasks)
@@ -234,7 +247,8 @@ impl Db {
     /// Moves an unfinished task to another day, remembering the day it started on.
     pub fn move_task(&self, id: u32, to: NaiveDate) -> Result<()> {
         self.conn.execute(
-            "UPDATE task SET carried_from_date = COALESCE(carried_from_date, date), date = ?2
+            "UPDATE task SET carried_from_date = COALESCE(carried_from_date, date), date = ?2,
+                 start_min = NULL
              WHERE id = ?1 AND status = 'open'",
             params![id, to.to_string()],
         )?;
@@ -291,20 +305,22 @@ impl Db {
                 task.allocated_min,
                 serde_json::to_string(&task.subtasks)?,
                 task.focus_area,
-                task.carried_from_date.map(|d| d.to_string())
+                task.carried_from_date.map(|d| d.to_string()),
+                task.start_min
             ];
             // An update, not an upsert: the insert trigger would count the row being replaced.
             let updated = tx.execute(
                 "UPDATE task SET title = ?3, priority = ?4, status = ?5, done_at = ?6,
-                     estimate_min = ?7, subtasks = ?8, focus_area = ?9, carried_from_date = ?10
+                     estimate_min = ?7, subtasks = ?8, focus_area = ?9, carried_from_date = ?10,
+                     start_min = ?11
                  WHERE id = ?1 AND date = ?2",
                 fields,
             )?;
             if updated == 0 {
                 tx.execute(
                     "INSERT INTO task (id, date, title, priority, status, done_at, estimate_min,
-                         subtasks, focus_area, carried_from_date)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                         subtasks, focus_area, carried_from_date, start_min)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                     fields,
                 )?;
             }
@@ -513,6 +529,7 @@ mod tests {
             subtasks: vec![],
             focus_area: None,
             carried_from_date: None,
+            start_min: None,
         }
     }
 
@@ -763,9 +780,13 @@ mod tests {
             subtasks: vec![],
             focus_area: None,
             carried_from_date: None,
+            start_min: Some(120),
         };
         db.save_tasks(date(5), std::slice::from_ref(&task)).unwrap();
         assert_eq!(db.load_tasks(date(5)).unwrap(), [task]);
+        // A time belongs to its day.
+        db.move_task(1, date(6)).unwrap();
+        assert_eq!(db.load_tasks(date(6)).unwrap()[0].start_min, None);
     }
 
     #[test]

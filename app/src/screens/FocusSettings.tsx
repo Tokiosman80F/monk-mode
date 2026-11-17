@@ -96,6 +96,22 @@ export default function FocusSettings() {
             onSave={(value) => void save({ pomodoro_break_min: value })}
           />
         </div>
+        <label className="flex items-center justify-between gap-4">
+          <span>
+            Start focus by itself when a time block begins
+            <span className="block text-sm text-neutral">
+              Sites with limits close at the block&apos;s start time, even if
+              you forget to start.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            className="toggle toggle-primary"
+            aria-label="Start focus when a time block begins"
+            checked={settings.strict_blocks}
+            onChange={(e) => void save({ strict_blocks: e.target.checked })}
+          />
+        </label>
       </Card>
 
       <Card title="Daily goal">

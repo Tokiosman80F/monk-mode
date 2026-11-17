@@ -9,6 +9,7 @@ import {
   formatDuration,
   fromDateKey,
   parseDuration,
+  timeToStart,
 } from "../lib";
 import { applyCall, useStore } from "../store";
 import type { LeftoverAction } from "../types/LeftoverAction";
@@ -110,6 +111,7 @@ export default function MorningPrompt() {
   const [title, setTitle] = useState("");
   const [area, setArea] = useState(areas[0]?.name ?? "");
   const [estimate, setEstimate] = useState("");
+  const [startAt, setStartAt] = useState("");
   const [error, setError] = useState<string | null>(null);
   if (!state) return null;
 
@@ -139,9 +141,11 @@ export default function MorningPrompt() {
       return null;
     }
     const next = addTask(tasks, name, "medium", minutes, state.next_id, area);
+    if (startAt) next[next.length - 1].start_min = timeToStart(startAt);
     if (!(await saveTasks(next))) return null;
     setTitle("");
     setEstimate("");
+    setStartAt("");
     return next.length;
   };
 
@@ -277,11 +281,21 @@ export default function MorningPrompt() {
               )}
               <input
                 className="input input-bordered w-28"
-                placeholder="Time"
+                placeholder="How long"
                 aria-label="Time estimate, optional"
                 value={estimate}
                 onChange={(e) => setEstimate(e.target.value)}
               />
+              <label className="input input-bordered flex w-40 items-center gap-2">
+                <span className="text-sm text-neutral">Starts</span>
+                <input
+                  type="time"
+                  className="min-w-0 grow bg-transparent"
+                  aria-label="Start time, optional"
+                  value={startAt}
+                  onChange={(e) => setStartAt(e.target.value)}
+                />
+              </label>
               <button
                 className="btn btn-ghost"
                 type="submit"

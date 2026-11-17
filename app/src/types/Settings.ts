@@ -6,4 +6,8 @@ export type Settings = { version: number, setup_done: boolean, allowance_sites: 
 /**
  * Filled in by the planner's one-time setup. Settings saved before it have none.
  */
-profile: Profile | null, };
+profile: Profile | null, 
+/**
+ * Start a focus session by itself when a task's time block begins.
+ */
+strict_blocks: boolean, };

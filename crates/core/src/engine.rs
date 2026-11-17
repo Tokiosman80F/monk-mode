@@ -7,7 +7,7 @@ use crate::lock::lock_day;
 use crate::models::{AllowanceSite, FocusKind, FocusSession, Now, PomodoroState, State, UsageDay};
 use crate::progress::progress;
 use crate::stats::streak;
-use crate::tasks::start_day;
+use crate::tasks::{block_at, start_day};
 
 const WARN_2MIN_SEC: u32 = 120;
 const WARN_30S_SEC: u32 = 30;
@@ -77,6 +77,7 @@ pub fn tick(
     let mut events = Vec::new();
     roll_over(state, now, &mut events);
     tick_pomodoro(state, elapsed_sec, now, &mut events);
+    tick_blocks(state, now);
     tick_allowance(state, elapsed_sec, active_tab, &mut events);
     state.streak_days = streak(
         &state.history,
@@ -239,6 +240,25 @@ fn tick_pomodoro(state: &mut State, elapsed_sec: u32, now: Now, events: &mut Vec
     }
 }
 
+/// Tracks the running time block. In strict mode an idle block starts a focus session, unless
+/// that block's session was stopped by hand.
+fn tick_blocks(state: &mut State, now: Now) {
+    let block = block_at(&state.tasks, now.day_minute);
+    if block != state.current_block {
+        state.skipped_block = None;
+    }
+    state.current_block = block;
+    if let Some(id) = block {
+        if state.settings.strict_blocks
+            && state.pomodoro == PomodoroState::Idle
+            && state.skipped_block != Some(id)
+        {
+            // Can't fail: the task exists and nothing is running.
+            let _ = start_pomodoro(state, Some(id), now);
+        }
+    }
+}
+
 /// Everything that must be blocked right now. `extension_connected` is false only when a
 /// browser has been running without the extension for too long (F4).
 pub fn compute_blocked(state: &State, now: Now, extension_connected: bool) -> BlockedSet {
@@ -344,6 +364,7 @@ mod tests {
             subtasks: vec![],
             focus_area: None,
             carried_from_date: None,
+            start_min: None,
         });
         Some(id)
     }
@@ -600,6 +621,43 @@ mod tests {
         pause_pomodoro(&mut s, false).unwrap();
         tick(&mut s, 60, now(), None);
         assert_eq!(s.today.focus_sec["React"], 120);
+    }
+
+    /// Noon UTC is minute 360 of the day. This block runs from minute 300 to 420.
+    fn with_block(s: &mut State) -> u32 {
+        let id = with_task(s, "Recipe app").unwrap();
+        let task = s.tasks.iter_mut().find(|t| t.id == id).unwrap();
+        task.start_min = Some(300);
+        task.allocated_min = 120;
+        id
+    }
+
+    #[test]
+    fn the_current_block_follows_the_clock() {
+        let mut s = state();
+        let id = with_block(&mut s);
+        tick(&mut s, 1, now(), None);
+        assert_eq!(s.current_block, Some(id));
+        assert_eq!(s.pomodoro, PomodoroState::Idle);
+        tick(&mut s, 1, at(2026, 11, 5, 14), None);
+        assert_eq!(s.current_block, None);
+    }
+
+    #[test]
+    fn strict_mode_starts_focus_until_it_is_stopped_by_hand() {
+        let mut s = state();
+        s.settings.strict_blocks = true;
+        let id = with_block(&mut s);
+        tick(&mut s, 1, now(), None);
+        assert!(
+            matches!(&s.pomodoro, PomodoroState::Focus { task_title, .. } if task_title == "Recipe app")
+        );
+
+        stop_pomodoro(&mut s, now());
+        s.skipped_block = s.current_block;
+        tick(&mut s, 1, now(), None);
+        assert_eq!(s.pomodoro, PomodoroState::Idle);
+        assert_eq!(s.current_block, Some(id));
     }
 
     #[test]

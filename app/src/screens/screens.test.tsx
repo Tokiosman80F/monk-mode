@@ -125,6 +125,40 @@ describe("Today", () => {
   });
 });
 
+describe("Time blocks", () => {
+  it("sets a task's start time from its row", async () => {
+    setStore();
+    render(<Tasks />);
+    const task = useStore.getState().snapshot!.state.tasks[0];
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: `Start time for ${task.title}: none. Change it`,
+      }),
+    );
+    const field = screen.getByLabelText(`Start time for ${task.title}`);
+    fireEvent.change(field, { target: { value: "08:00" } });
+    fireEvent.blur(field);
+    await waitFor(() => expect(api.updateTasks).toHaveBeenCalled());
+    expect(savedTasks().find((t) => t.id === task.id)?.start_min).toBe(120);
+  });
+
+  it("shows a late block and pushes the rest of the day", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 10, 17, 8, 20));
+    setStore(({ state }) => {
+      state.tasks[0].start_min = 120;
+      state.tasks[0].allocated_min = 240;
+      state.current_block = state.tasks[0].id;
+    });
+    render(<Pomodoro />);
+    expect(screen.getByText(/20m behind/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Push my day by 20m" }));
+    await waitFor(() => expect(api.updateTasks).toHaveBeenCalled());
+    expect(savedTasks()[0].start_min).toBe(140);
+    vi.useRealTimers();
+  });
+});
+
 describe("Tasks", () => {
   it("lists tasks with the most important first, and no matrix", () => {
     setStore();
@@ -180,6 +214,7 @@ describe("Tasks", () => {
       subtasks: [],
       focus_area: null,
       carried_from_date: null,
+      start_min: null,
     });
     vi.mocked(api.updateTasks).mockResolvedValue(next);
     render(<Tasks />);
@@ -476,6 +511,7 @@ describe("Pomodoro", () => {
           subtasks: [],
           focus_area: null,
           carried_from_date: null,
+          start_min: null,
         },
       ];
       state.today.focus_sec = { "Project building": 2 * 3000 + 1200 };
@@ -584,6 +620,25 @@ describe("Morning prompt", () => {
     expect(api.planDay).not.toHaveBeenCalled();
   });
 
+  it("adds a task with an optional start time", async () => {
+    unplanned();
+    render(<MorningPrompt />);
+    fireEvent.change(screen.getByLabelText("New task"), {
+      target: { value: "Recipe app" },
+    });
+    fireEvent.change(screen.getByLabelText("Time estimate, optional"), {
+      target: { value: "4h" },
+    });
+    fireEvent.change(screen.getByLabelText("Start time, optional"), {
+      target: { value: "08:00" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add task" }));
+    await waitFor(() => expect(api.updateTasks).toHaveBeenCalled());
+    expect(savedTasks()[0]).toEqual(
+      expect.objectContaining({ allocated_min: 240, start_min: 120 }),
+    );
+  });
+
   it("adds a typed task before starting the day", async () => {
     unplanned();
     vi.mocked(api.updateTasks).mockImplementation(async (tasks) => {
@@ -635,6 +690,7 @@ describe("Morning prompt", () => {
         subtasks: [],
         focus_area: null,
         carried_from_date: null,
+        start_min: null,
       }));
     });
     render(<MorningPrompt />);
@@ -655,6 +711,7 @@ describe("Morning prompt", () => {
           subtasks: [],
           focus_area: "Products",
           carried_from_date: null,
+          start_min: null,
         },
       ];
     });
@@ -707,6 +764,7 @@ describe("Task limit", () => {
         subtasks: [],
         focus_area: null,
         carried_from_date: null,
+        start_min: null,
       }));
     });
     render(<Tasks />);
@@ -769,6 +827,7 @@ describe("Renaming", () => {
           ],
           focus_area: null,
           carried_from_date: null,
+          start_min: null,
         },
       ];
     });
@@ -796,6 +855,7 @@ describe("Renaming", () => {
           ],
           focus_area: null,
           carried_from_date: null,
+          start_min: null,
         },
       ];
     });
@@ -822,6 +882,7 @@ describe("Renaming", () => {
           subtasks: [],
           focus_area: null,
           carried_from_date: null,
+          start_min: null,
         },
       ];
     });
@@ -1018,6 +1079,16 @@ describe("Settings", () => {
     fireEvent.blur(target);
     expect(api.updateSettings).not.toHaveBeenCalled();
     expect(target).toHaveValue(11);
+  });
+
+  it("turns strict time blocks on", async () => {
+    setStore();
+    render(<FocusSettings />);
+    fireEvent.click(
+      screen.getByLabelText("Start focus when a time block begins"),
+    );
+    await waitFor(() => expect(api.updateSettings).toHaveBeenCalled());
+    expect(savedSettings().strict_blocks).toBe(true);
   });
 
   it("edits the planner profile", async () => {

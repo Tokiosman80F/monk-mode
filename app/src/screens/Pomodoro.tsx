@@ -2,10 +2,13 @@ import { Pause, Play, Square } from "lucide-react";
 import { useState } from "react";
 import { api } from "../api";
 import {
+  blockText,
+  dayMinute,
   endsAt,
   formatClock,
   formatDuration,
   nextTask,
+  pushBlocks,
   sessionRing,
 } from "../lib";
 import { applyCall, lastFocusTask, useStore } from "../store";
@@ -65,8 +68,27 @@ export default function Pomodoro() {
   if (!state) return null;
 
   const { pomodoro } = state;
-  const next = nextTask(state.tasks, lastFocusTask());
-  const carryingOn = next !== undefined && next.title === lastFocusTask();
+  const minute = dayMinute();
+  const next = nextTask(
+    state.tasks,
+    lastFocusTask(),
+    state.current_block,
+    minute,
+  );
+  const inBlock = next !== undefined && next.id === state.current_block;
+  const carryingOn =
+    !inBlock && next !== undefined && next.title === lastFocusTask();
+  // Five minutes' grace before a block counts as late.
+  const behind =
+    inBlock && next.start_min !== null ? minute - next.start_min : 0;
+  const push = async () => {
+    if (!next || next.start_min === null) return;
+    setError(
+      await applyCall(
+        api.updateTasks(pushBlocks(state.tasks, next.start_min, minute)),
+      ),
+    );
+  };
   const stop = async () => setError(await applyCall(api.stopPomodoro()));
   const start = async (taskId: number | null) =>
     setError(await applyCall(api.startPomodoro(taskId)));
@@ -79,13 +101,24 @@ export default function Pomodoro() {
             {next ? (
               <>
                 <span className="text-neutral">
-                  {carryingOn ? "Carry on with: " : "Next up: "}
+                  {inBlock
+                    ? "Now: "
+                    : carryingOn
+                      ? "Carry on with: "
+                      : "Next up: "}
                 </span>
                 {next.title}
-                {next.allocated_min > 0 && (
-                  <span className="text-neutral">
+                <span className="text-neutral">
+                  {" "}
+                  {blockText(next) ??
+                    (next.allocated_min > 0
+                      ? `for ${formatDuration(next.allocated_min * 60)}`
+                      : "")}
+                </span>
+                {behind >= 5 && (
+                  <span className="text-warning">
                     {" "}
-                    for {formatDuration(next.allocated_min * 60)}
+                    · {formatDuration(behind * 60)} behind
                   </span>
                 )}
               </>
@@ -93,6 +126,14 @@ export default function Pomodoro() {
               <span className="text-neutral">Nothing lined up yet.</span>
             )}
           </p>
+          {behind >= 5 && (
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => void push()}
+            >
+              Push my day by {formatDuration(Math.ceil(behind / 5) * 5 * 60)}
+            </button>
+          )}
           <button
             className="btn btn-ghost btn-sm"
             onClick={() => void start(null)}

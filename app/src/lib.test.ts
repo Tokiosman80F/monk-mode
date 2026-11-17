@@ -16,6 +16,10 @@ import {
   isLocked,
   nextPriority,
   nextTask,
+  pushBlocks,
+  startToTime,
+  timeToStart,
+  dayMinute,
   parseDuration,
   plannedMin,
   PRIORITY_INFO,
@@ -317,5 +321,37 @@ describe("nextFreeId", () => {
     expect(nextFreeId([{ id: 2 }], 1)).toBe(3);
     expect(nextFreeId([{ id: 2 }], 40)).toBe(40);
     expect(nextFreeId([], 7)).toBe(7);
+  });
+});
+
+describe("time blocks", () => {
+  const block = (id: number, start: number | null, minutes = 60) => ({
+    ...addTask([], `Task ${id}`, "medium", minutes, id)[0],
+    start_min: start,
+  });
+
+  it("stores times as minutes after 6 AM", () => {
+    expect(timeToStart("08:00")).toBe(120);
+    expect(timeToStart("06:00")).toBe(0);
+    expect(timeToStart("01:30")).toBe(1170);
+    expect(timeToStart("")).toBeNull();
+    expect(startToTime(120)).toBe("08:00");
+    expect(startToTime(1170)).toBe("01:30");
+    expect(dayMinute(new Date(2026, 10, 17, 8, 15))).toBe(135);
+    expect(dayMinute(new Date(2026, 10, 17, 5, 59))).toBe(1439);
+  });
+
+  it("picks the running block first, then the next one to come", () => {
+    const tasks = [block(1, null), block(2, 300), block(3, 120)];
+    expect(nextTask(tasks, null, 3, 150)?.id).toBe(3);
+    expect(nextTask(tasks, null, null, 200)?.id).toBe(2);
+    expect(nextTask(tasks, null, null, 400)?.id).toBe(3);
+  });
+
+  it("pushes the running block and later ones, rounded up to 5 minutes", () => {
+    const tasks = [block(1, 60), block(2, 120, 240), block(3, 360)];
+    const pushed = pushBlocks(tasks, 120, 138);
+    expect(pushed.map((t) => t.start_min)).toEqual([60, 140, 380]);
+    expect(pushBlocks(tasks, 120, 120)).toBe(tasks);
   });
 });

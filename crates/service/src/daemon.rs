@@ -474,6 +474,7 @@ impl<P: Platform> Daemon<P> {
                 Ok(self.state_json())
             }
             (Client::Ui, Message::StopPomodoro) => {
+                self.state.skipped_block = self.state.current_block;
                 if let Some(session) = stop_pomodoro(&mut self.state, now) {
                     self.save_session(&session);
                 }
@@ -680,6 +681,7 @@ pub mod tests {
                 subtasks: vec![],
                 focus_area: None,
                 carried_from_date: None,
+                start_min: None,
             });
             self.ui(Message::UpdateTasks(tasks)).unwrap();
             Some(id)
@@ -1056,6 +1058,7 @@ pub mod tests {
                 subtasks: vec![],
                 focus_area: None,
                 carried_from_date: None,
+                start_min: None,
             })
             .collect();
         rig.daemon.db.save_tasks(later, &full).unwrap();

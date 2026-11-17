@@ -42,6 +42,7 @@ it("topTasks leaves out finished ones and puts high priority first", () => {
     subtasks: [],
     focus_area: null,
     carried_from_date: null,
+    start_min: null,
   });
   const tasks = [
     task(1, "low"),

@@ -8,6 +8,9 @@ import {
   SUBTASK_XP,
   addSubtask,
   addTask,
+  blockText,
+  startToTime,
+  timeToStart,
   formatDuration,
   nextPriority,
   parseDuration,
@@ -161,6 +164,54 @@ export function Title({
   );
 }
 
+/** A task's start time, which becomes a time field when clicked. */
+function StartPill({
+  task,
+  onChange,
+}: {
+  task: Task;
+  onChange: (start: number | null) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+
+  if (draft === null) {
+    const text = blockText(task);
+    return (
+      <button
+        type="button"
+        className={`btn btn-ghost btn-xs w-36 justify-end whitespace-nowrap font-normal tabular-nums ${text ? "" : "text-neutral"}`}
+        aria-label={`Start time for ${task.title}: ${text ?? "none"}. Change it`}
+        onClick={() =>
+          setDraft(task.start_min === null ? "" : startToTime(task.start_min))
+        }
+      >
+        {text ?? "Set start"}
+      </button>
+    );
+  }
+
+  const commit = () => {
+    const start = draft === "" ? null : timeToStart(draft);
+    if (start !== task.start_min) onChange(start);
+    setDraft(null);
+  };
+  return (
+    <input
+      type="time"
+      autoFocus
+      className="input input-xs input-bordered w-36"
+      aria-label={`Start time for ${task.title}`}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+        if (e.key === "Escape") setDraft(null);
+      }}
+    />
+  );
+}
+
 function SubtaskForm({
   task,
   onAdd,
@@ -291,6 +342,10 @@ function TaskRow({
           label={`Priority of ${task.title}`}
           value={task.priority}
           onChange={(priority) => onChange({ ...task, priority })}
+        />
+        <StartPill
+          task={task}
+          onChange={(start_min) => onChange({ ...task, start_min })}
         />
         <TimePill
           label={`Time for ${task.title}`}

@@ -35,10 +35,13 @@ pub fn allowance_text(state: &State) -> String {
     }
 }
 
-/// The task a one-click start from the tray counts towards: the one last focused on, if it's still
-/// open, so a break doesn't move you off it. Otherwise the most important unfinished one. With
-/// none, the session runs without a task.
+/// The task a one-click start from the tray counts towards: the running time block, then the one
+/// last focused on, if it's still open, so a break doesn't move you off it. Otherwise the most
+/// important unfinished one. With none, the session runs without a task.
 pub fn next_task(state: &State, last_focus: Option<&str>) -> Option<u32> {
+    if state.current_block.is_some() {
+        return state.current_block;
+    }
     let open = || state.tasks.iter().filter(|task| !task.done);
     open()
         .find(|task| Some(task.title.as_str()) == last_focus)
@@ -121,6 +124,20 @@ pub fn notices(previous: &State, current: &State) -> Vec<(String, String)> {
         None => {}
     }
 
+    if let Some(id) = current
+        .current_block
+        .filter(|id| previous.current_block != Some(*id))
+    {
+        if let Some(task) = current.tasks.iter().find(|t| t.id == id) {
+            let body = if matches!(current.pomodoro, PomodoroState::Focus { .. }) {
+                "Focus started. Sites with limits are closed."
+            } else {
+                "Open Monk Mode and start focus."
+            };
+            notice(format!("{} starts now", task.title), body);
+        }
+    }
+
     // Level 0 is the state before the service's first tick, not a real level.
     let (old_level, new_level) = (previous.progress.level, current.progress.level);
     if old_level > 0 && new_level > old_level {
@@ -149,6 +166,28 @@ mod tests {
             .into_iter()
             .map(|n| n.0)
             .collect()
+    }
+
+    #[test]
+    fn a_starting_block_is_announced_once() {
+        let mut previous = state(0);
+        let mut current = state(0);
+        current.tasks = vec![Task {
+            id: 7,
+            title: "Recipe app".to_string(),
+            priority: Priority::High,
+            done: false,
+            done_on: None,
+            allocated_min: 240,
+            subtasks: vec![],
+            focus_area: None,
+            carried_from_date: None,
+            start_min: Some(120),
+        }];
+        current.current_block = Some(7);
+        assert_eq!(titles(&previous, &current), ["Recipe app starts now"]);
+        previous.current_block = Some(7);
+        assert!(titles(&previous, &current).is_empty());
     }
 
     #[test]
@@ -321,6 +360,7 @@ mod tests {
             subtasks: vec![],
             focus_area: None,
             carried_from_date: None,
+            start_min: None,
         };
         let mut s = state(0);
         assert_eq!(next_task(&s, None), None);
@@ -346,6 +386,7 @@ mod tests {
             subtasks: vec![],
             focus_area: None,
             carried_from_date: None,
+            start_min: None,
         };
         let mut s = state(0);
         s.tasks = vec![

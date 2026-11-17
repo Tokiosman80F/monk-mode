@@ -115,12 +115,81 @@ export function subtasksOverBy(task: Task): number {
 
 /** The task last focused on if it's still open, so a break doesn't move you off it. Otherwise the
  * most important open task. */
+/**
+ * What to work on now: the running time block, then the task last focused on, then the next
+ * block still to come, then the first open task.
+ */
 export function nextTask(
   tasks: Task[],
   lastFocus: string | null = null,
+  currentBlock: number | null = null,
+  minute = dayMinute(),
 ): Task | undefined {
   const open = sortTasks(tasks).filter((task) => !task.done);
-  return open.find((task) => task.title === lastFocus) ?? open[0];
+  return (
+    open.find((task) => task.id === currentBlock) ??
+    open.find((task) => task.title === lastFocus) ??
+    open.find((task) => task.start_min !== null && task.start_min >= minute) ??
+    open[0]
+  );
+}
+
+/** The app day starts at 06:00. Times of day are stored as minutes after that. */
+export const DAY_START_MIN = 6 * 60;
+const DAY_MIN = 24 * 60;
+
+/** Minutes since the app day started, 0 to 1439. */
+export function dayMinute(now = new Date()): number {
+  return (
+    (now.getHours() * 60 + now.getMinutes() - DAY_START_MIN + DAY_MIN) % DAY_MIN
+  );
+}
+
+/** An `<input type="time">` value, like `08:00`, to minutes after the day starts. */
+export function timeToStart(value: string): number | null {
+  const m = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!m) return null;
+  return (Number(m[1]) * 60 + Number(m[2]) - DAY_START_MIN + DAY_MIN) % DAY_MIN;
+}
+
+/** Minutes after the day starts to an `<input type="time">` value. */
+export function startToTime(start: number): string {
+  const t = (start + DAY_START_MIN) % DAY_MIN;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(Math.floor(t / 60))}:${pad(t % 60)}`;
+}
+
+/** Minutes after the day starts, as a clock time like `8:00 AM`. */
+export function formatStart(start: number): string {
+  const t = (start + DAY_START_MIN) % DAY_MIN;
+  return new Date(2000, 0, 1, Math.floor(t / 60), t % 60).toLocaleTimeString(
+    undefined,
+    { hour: "numeric", minute: "2-digit" },
+  );
+}
+
+/** A task's time block, like `8:00 AM – 12:00 PM`, or null without one. */
+export function blockText(task: Task): string | null {
+  if (task.start_min === null) return null;
+  return `${formatStart(task.start_min)} – ${formatStart(task.start_min + task.allocated_min)}`;
+}
+
+/**
+ * Moves the running block to start at `minute`, and every later block by the same amount, so
+ * the rest of the day keeps its shape. Rounds up to 5 minutes.
+ */
+export function pushBlocks(
+  tasks: Task[],
+  fromStart: number,
+  minute: number,
+): Task[] {
+  const by = Math.ceil((minute - fromStart) / 5) * 5;
+  if (by <= 0) return tasks;
+  return tasks.map((task) =>
+    !task.done && task.start_min !== null && task.start_min >= fromStart
+      ? { ...task, start_min: task.start_min + by }
+      : task,
+  );
 }
 
 /** Must match `time_left` in app/src-tauri/src/notify.rs, which the tray uses. */
@@ -170,15 +239,18 @@ export function addTask(
       subtasks: [],
       focus_area: focus_area || null,
       carried_from_date: null,
+      start_min: null,
     },
   ];
 }
 
-/** Open tasks first, then by priority. Within that, oldest first. */
+/** Open tasks first, then time blocks in order, then by priority. Within that, oldest first. */
 export function sortTasks(tasks: Task[]): Task[] {
+  const at = (t: Task) => t.start_min ?? Number.MAX_SAFE_INTEGER;
   return [...tasks].sort(
     (a, b) =>
       Number(a.done) - Number(b.done) ||
+      at(a) - at(b) ||
       PRIORITIES.indexOf(a.priority) - PRIORITIES.indexOf(b.priority) ||
       a.id - b.id,
   );

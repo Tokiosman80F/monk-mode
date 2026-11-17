@@ -16,6 +16,7 @@ export function makeSnapshot(): Snapshot {
         pomodoro_focus_min: 50,
         pomodoro_break_min: 10,
         daily_focus_target_min: 660,
+        strict_blocks: false,
         profile: {
           name: "Sam",
           focus_areas: [{ name: "React" }, { name: "Products" }],
@@ -44,6 +45,7 @@ export function makeSnapshot(): Snapshot {
           subtasks: [],
           focus_area: "React",
           carried_from_date: null,
+          start_min: null,
         },
         {
           id: 2,
@@ -58,6 +60,7 @@ export function makeSnapshot(): Snapshot {
           ],
           focus_area: null,
           carried_from_date: null,
+          start_min: null,
         },
       ],
       small_items: [
@@ -72,6 +75,7 @@ export function makeSnapshot(): Snapshot {
       next_id: 4,
       planned: true,
       leftovers: [],
+      current_block: null,
       progress: {
         xp: 320,
         today_xp: 100,

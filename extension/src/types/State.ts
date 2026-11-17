@@ -28,4 +28,8 @@ planned: boolean,
 /**
  * Yesterday's unfinished tasks, for the morning prompt to carry, move or drop.
  */
-leftovers: Array<Task>, progress: Progress, };
+leftovers: Array<Task>, progress: Progress, 
+/**
+ * The open task whose time block is running now, worked out every second.
+ */
+current_block: number | null, };
