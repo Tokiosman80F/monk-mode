@@ -199,7 +199,15 @@ function StartPill({
     <input
       type="time"
       autoFocus
-      className="input input-xs input-bordered w-36"
+      className="input input-sm input-bordered w-40 cursor-pointer"
+      title="Clear it to remove the start time"
+      onClick={(e) => {
+        try {
+          e.currentTarget.showPicker();
+        } catch {
+          // Typing the time still works.
+        }
+      }}
       aria-label={`Start time for ${task.title}`}
       value={draft}
       onChange={(e) => setDraft(e.target.value)}

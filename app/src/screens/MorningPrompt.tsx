@@ -17,6 +17,15 @@ import type { Task } from "../types/Task";
 import { ErrorNote } from "../ui";
 import SmallWork from "./SmallWork";
 
+/** Opens the native time picker, where the browser allows it. */
+function openPicker(input: HTMLInputElement) {
+  try {
+    input.showPicker();
+  } catch {
+    // Typing the time still works.
+  }
+}
+
 function greeting(now = new Date()): string {
   const hour = now.getHours();
   if (hour >= 6 && hour < 12) return "Good morning";
@@ -286,11 +295,12 @@ export default function MorningPrompt() {
                 value={estimate}
                 onChange={(e) => setEstimate(e.target.value)}
               />
-              <label className="input input-bordered flex w-40 items-center gap-2">
+              <label className="input input-bordered flex w-48 cursor-pointer items-center gap-2">
                 <span className="text-sm text-neutral">Starts</span>
                 <input
                   type="time"
-                  className="min-w-0 grow bg-transparent"
+                  className="min-w-0 grow cursor-pointer bg-transparent"
+                  onClick={(e) => openPicker(e.currentTarget)}
                   aria-label="Start time, optional"
                   value={startAt}
                   onChange={(e) => setStartAt(e.target.value)}

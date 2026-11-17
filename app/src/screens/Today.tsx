@@ -70,7 +70,7 @@ function Timeline({
         {marks.map((minute) => (
           <span
             key={minute}
-            className="absolute -translate-x-1/2 first:translate-x-0 last:-translate-x-full"
+            className="absolute -translate-x-1/2 whitespace-nowrap first:translate-x-0 last:-translate-x-full"
             style={{ left: at(minute) }}
           >
             {formatStart(minute).replace(":00", "")}
