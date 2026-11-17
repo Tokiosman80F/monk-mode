@@ -620,6 +620,38 @@ describe("Morning prompt", () => {
     expect(api.planDay).not.toHaveBeenCalled();
   });
 
+  it("takes any focus area, and saves a new one for next time", async () => {
+    unplanned();
+    render(<MorningPrompt />);
+    fireEvent.change(screen.getByLabelText("New task"), {
+      target: { value: "Send 10 applications" },
+    });
+    fireEvent.change(screen.getByLabelText("Focus area"), {
+      target: { value: "Job search" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add task" }));
+    await waitFor(() => expect(api.updateTasks).toHaveBeenCalled());
+    expect(savedTasks()[0].focus_area).toBe("Job search");
+    expect(savedSettings().profile?.focus_areas.map((a) => a.name)).toContain(
+      "Job search",
+    );
+  });
+
+  it("keeps a saved area's spelling and doesn't add it twice", async () => {
+    unplanned();
+    render(<MorningPrompt />);
+    fireEvent.change(screen.getByLabelText("New task"), {
+      target: { value: "Hooks" },
+    });
+    fireEvent.change(screen.getByLabelText("Focus area"), {
+      target: { value: "react" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add task" }));
+    await waitFor(() => expect(api.updateTasks).toHaveBeenCalled());
+    expect(savedTasks()[0].focus_area).toBe("React");
+    expect(api.updateSettings).not.toHaveBeenCalled();
+  });
+
   it("adds a task with an optional start time", async () => {
     unplanned();
     render(<MorningPrompt />);

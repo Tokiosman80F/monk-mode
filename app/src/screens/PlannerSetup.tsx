@@ -1,6 +1,7 @@
 import { Plus, X } from "lucide-react";
 import { useState } from "react";
 import { api } from "../api";
+import { MAX_FOCUS_AREAS } from "../lib";
 import { applyCall, useStore } from "../store";
 import type { Profile } from "../types/Profile";
 import { ErrorNote, Logo } from "../ui";
@@ -127,7 +128,7 @@ export function ProfileForm({
             </button>
           </div>
         ))}
-        {areas.length < 6 && (
+        {areas.length < MAX_FOCUS_AREAS && (
           <button
             type="button"
             className="btn btn-ghost btn-sm self-start"

@@ -56,6 +56,9 @@ export function totalFocusSec(day: UsageDay): number {
   );
 }
 
+/** Matches `MAX_FOCUS_AREAS` in crates/core/src/planner.rs. */
+export const MAX_FOCUS_AREAS = 12;
+
 export const PRIORITIES: Priority[] = ["high", "medium", "low"];
 
 /** `xp` must match `priority_xp` in crates/core/src/tasks.rs. */

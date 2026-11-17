@@ -2,6 +2,7 @@ import { ArrowRight, CalendarClock, Plus, X } from "lucide-react";
 import { useState } from "react";
 import { api } from "../api";
 import {
+  MAX_FOCUS_AREAS,
   MAX_TASKS,
   addDays,
   addTask,
@@ -118,7 +119,7 @@ export default function MorningPrompt() {
   const state = useStore((s) => s.snapshot?.state);
   const areas = state?.settings.profile?.focus_areas ?? [];
   const [title, setTitle] = useState("");
-  const [area, setArea] = useState(areas[0]?.name ?? "");
+  const [area, setArea] = useState("");
   const [estimate, setEstimate] = useState("");
   const [startAt, setStartAt] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -149,10 +150,39 @@ export default function MorningPrompt() {
       setError("Use a time like 45m, 3h or 1h 30m, or leave it empty.");
       return null;
     }
-    const next = addTask(tasks, name, "medium", minutes, state.next_id, area);
+    // A saved area keeps its spelling. A new one joins the profile, so it's offered next time.
+    const typed = area.trim();
+    const known = areas.find(
+      (a) => a.name.toLowerCase() === typed.toLowerCase(),
+    );
+    const profile = state.settings.profile;
+    if (typed && !known && profile && areas.length < MAX_FOCUS_AREAS) {
+      const failed = await applyCall(
+        api.updateSettings({
+          ...state.settings,
+          profile: {
+            ...profile,
+            focus_areas: [...areas, { name: typed }],
+          },
+        }),
+      );
+      if (failed) {
+        setError(failed);
+        return null;
+      }
+    }
+    const next = addTask(
+      tasks,
+      name,
+      "medium",
+      minutes,
+      state.next_id,
+      known?.name ?? typed,
+    );
     if (startAt) next[next.length - 1].start_min = timeToStart(startAt);
     if (!(await saveTasks(next))) return null;
     setTitle("");
+    setArea("");
     setEstimate("");
     setStartAt("");
     return next.length;
@@ -276,18 +306,20 @@ export default function MorningPrompt() {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
               />
-              {areas.length > 0 && (
-                <select
-                  className="select select-bordered"
-                  aria-label="Focus area"
-                  value={area}
-                  onChange={(e) => setArea(e.target.value)}
-                >
-                  {areas.map((a) => (
-                    <option key={a.name}>{a.name}</option>
-                  ))}
-                </select>
-              )}
+              <input
+                className="input input-bordered w-40"
+                placeholder="Area, optional"
+                aria-label="Focus area"
+                list="focus-areas"
+                maxLength={60}
+                value={area}
+                onChange={(e) => setArea(e.target.value)}
+              />
+              <datalist id="focus-areas">
+                {areas.map((a) => (
+                  <option key={a.name} value={a.name} />
+                ))}
+              </datalist>
               <input
                 className="input input-bordered w-28"
                 placeholder="How long"

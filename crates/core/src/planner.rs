@@ -7,7 +7,7 @@ use ts_rs::TS;
 
 /// Tasks are the work that really counts, so a day holds at most this many.
 pub const MAX_TASKS_PER_DAY: usize = 4;
-const MAX_FOCUS_AREAS: usize = 6;
+pub const MAX_FOCUS_AREAS: usize = 12;
 const MAX_NAME_CHARS: usize = 60;
 
 /// Something the user works on, like `React`. Tasks are labelled with one.
